@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+    scroll-behavior: smooth;
+}
+
+:root {
+    --background: #ffffff;
+    --foreground: #1f2937;
+    --font-google-sans: 'Google Sans', 'Google Sans Text', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --background: #ffffff;
+        /* The screenshot is in light mode, let's keep it primarily light or adapt to system */
+        --foreground: #1f2937;
+    }
+}
+
+body {
+    color: var(--foreground);
+    background: var(--background);
+    font-family: var(--font-google-sans);
+    overflow-x: hidden;
+}
+
+/* Background animation and styling to match the screenshot */
+.bg-mesh {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1;
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(66, 133, 244, 0.08), transparent 40%),
+        radial-gradient(circle at 85% 30%, rgba(234, 67, 53, 0.08), transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(251, 188, 4, 0.08), transparent 40%),
+        radial-gradient(circle at 80% 80%, rgba(52, 168, 83, 0.08), transparent 40%);
+    filter: blur(40px);
+}
+
+/* Simulated particles/stars in background */
+.particle-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 0;
+    background-image: radial-gradient(#4285F4 1px, transparent 1px), radial-gradient(#EA4335 1px, transparent 1px), radial-gradient(#34A853 1px, transparent 1px);
+    background-size: 80px 80px, 90px 90px, 100px 100px;
+    background-position: 0 0, 40px 40px, 20px 60px;
+    opacity: 0.15;
+}
+
+/* Gemini-style auto-cycling color animation for mask background */
+@keyframes gemini-spin {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
+.gemini-mask-bg {
+    background: linear-gradient(-45deg,
+            #4285F4,
+            #9b51e0,
+            #e91e63,
+            #2196f3,
+            #00bcd4,
+            #4caf50);
+    background-size: 400% 400%;
+    animation: gemini-spin 10s ease infinite;
+}
