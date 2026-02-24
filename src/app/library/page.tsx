@@ -1,8 +1,9 @@
 "use client";
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Download, Search, ArrowLeft, MoreHorizontal, Clock, Sparkles } from 'lucide-react';
+import { Plus, Download, Search, ArrowLeft, Sparkles } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import NewWorkspaceModal from '@/components/workspace/NewWorkspaceModal';
 
 const mockWorkspaces = [
     {
@@ -107,6 +108,7 @@ const DiagramPreviews = [
 
 export default function LibraryPage() {
     const [query, setQuery] = useState('');
+    const [showModal, setShowModal] = useState(false);
     const router = useRouter();
 
     const filtered = mockWorkspaces.filter(w =>
@@ -171,15 +173,14 @@ export default function LibraryPage() {
                 {/* Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
 
-                    {/* Create New Card (Vibrant Hollow Folder) */}
-                    <Link
-                        href={`/workspace/${Math.random().toString(36).substring(7)}`}
+                    {/* Create New Card */}
+                    <button
+                        onClick={() => setShowModal(true)}
                         className="group relative w-full aspect-[5/4] rounded-[2rem] border-2 border-dashed border-[#536ea1] bg-white hover:bg-[#536ea1]/5 transition-all overflow-hidden flex flex-col items-center justify-center shadow-sm hover:shadow-lg"
                     >
-                        {/* Tab-like shape — blue by default */}
+                        {/* Tab-like shape */}
                         <div className="absolute top-0 left-0 w-[60%] h-12 border-b-2 border-r-2 border-dashed border-[#536ea1] bg-[#536ea1]/5 rounded-br-[1.5rem]" />
 
-                        {/* Solid blue plus button */}
                         <div className="w-14 h-14 rounded-full bg-[#536ea1] flex items-center justify-center mb-3 mt-8 shadow-md group-hover:scale-110 transition-transform">
                             <Plus className="w-6 h-6 text-white" />
                         </div>
@@ -188,9 +189,9 @@ export default function LibraryPage() {
 
                         <div className="mt-2 flex items-center gap-1.5">
                             <Sparkles className="w-3 h-3 text-[#536ea1]/70" />
-                            <span className="text-[9px] font-bold tracking-[0.2em] text-[#536ea1]/60 uppercase">Blank Canvas</span>
+                            <span className="text-[9px] font-bold tracking-[0.2em] text-[#536ea1]/60 uppercase">Personal or AI</span>
                         </div>
-                    </Link>
+                    </button>
 
                     {/* Workspace Cards */}
                     {filtered.map((ws, i) => (
@@ -210,6 +211,9 @@ export default function LibraryPage() {
                     )}
                 </div>
             </div>
+
+            {/* Workspace creation modal */}
+            {showModal && <NewWorkspaceModal onClose={() => setShowModal(false)} />}
         </main>
     );
 }

@@ -109,6 +109,7 @@ export default function WorkspacePage({ params }: { params: { id: string } }) {
                 savedLibraryItems={savedLibraryItems}
                 onLibraryChange={handleLibraryChange}
                 onBack={() => router.push('/library')}
+                workspaceId={params.id}
             />
         </div>
     );
