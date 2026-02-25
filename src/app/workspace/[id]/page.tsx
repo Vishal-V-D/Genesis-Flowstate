@@ -1,9 +1,12 @@
 "use client";
 
-import React, { useRef, useEffect, useState } from "react";
+import React, { useRef, useEffect, useState, Suspense } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { LibraryItems } from "@excalidraw/excalidraw/types";
+import { useAuth } from "@/hooks/useAuth";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 const LIBRARY_STORAGE_KEY = "kira-excalidraw-library";
 
@@ -19,55 +22,141 @@ const ExcalidrawWrapper = dynamic(() => import("./ExcalidrawWrapper"), {
     ),
 });
 
-export default function WorkspacePage({ params }: { params: { id: string } }) {
+function WorkspacePageInner({ params }: { params: { id: string } }) {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const excalidrawRef = useRef<any>(null);
     const [savedLibraryItems, setSavedLibraryItems] = useState<LibraryItems>([]);
     const [pendingLibraryUrl, setPendingLibraryUrl] = useState<string | null>(null);
+    const [libraryLoaded, setLibraryLoaded] = useState(false);
 
-    // Load persisted library items from localStorage on mount
+    // Canvas Document State
+    const [initialElements, setInitialElements] = useState<any[] | null>(null);
+    const [initialAppState, setInitialAppState] = useState<any | null>(null);
+    const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
+    const [isOwner, setIsOwner] = useState(false);
+    const [canEdit, setCanEdit] = useState(false);
+
+    // Enforce authentication for workspace access
+    const { user, loading: authLoading } = useAuth(true);
+
+    // Load workspace data + validate share token
     useEffect(() => {
-        try {
-            const stored = localStorage.getItem(LIBRARY_STORAGE_KEY);
-            if (stored) {
-                const parsed = JSON.parse(stored);
-                if (Array.isArray(parsed) && parsed.length > 0) {
-                    setSavedLibraryItems(parsed);
-                }
-            }
-        } catch (e) {
-            console.warn("Could not load library from storage:", e);
-        }
-    }, []);
+        if (authLoading || !user) return;
 
-    // Detect #addLibrary=... hash (set by libraries.excalidraw.com redirect)
+        const fetchWorkspaceData = async () => {
+            try {
+                const shareToken = searchParams?.get("token") ?? null;
+
+                // 1. Load User Library Items
+                const userDoc = await getDoc(doc(db, "users", user.uid));
+                if (userDoc.exists() && userDoc.data().excalidrawLibrary) {
+                    const parsed = JSON.parse(userDoc.data().excalidrawLibrary);
+                    if (Array.isArray(parsed) && parsed.length > 0) {
+                        setSavedLibraryItems(parsed);
+                    }
+                }
+
+                // 2. Load Workspace Canvas
+                const workspaceDoc = await getDoc(doc(db, "workspaces", params.id));
+
+                let resolvedTitle = "Untitled Architecture";
+                let resolvedRole: 'owner' | 'editor' | 'viewer' = 'viewer';
+
+                if (workspaceDoc.exists()) {
+                    const data = workspaceDoc.data();
+                    if (data.title) { resolvedTitle = data.title; setWorkspaceTitle(data.title); }
+                    if (data.elements) setInitialElements(JSON.parse(data.elements));
+                    if (data.appState) setInitialAppState(JSON.parse(data.appState));
+
+                    const owner = data.userId === user.uid;
+                    setIsOwner(owner);
+
+                    if (owner) {
+                        resolvedRole = 'owner';
+                        setCanEdit(true);
+                    } else if (shareToken) {
+                        const editTokens: string[] = data.editTokens || [];
+                        const viewTokens: string[] = data.viewTokens || [];
+                        if (editTokens.includes(shareToken)) {
+                            resolvedRole = 'editor';
+                            setCanEdit(true);
+                        } else if (viewTokens.includes(shareToken)) {
+                            resolvedRole = 'viewer';
+                            setCanEdit(false);
+                        } else {
+                            resolvedRole = data.shareMode !== 'viewer' ? 'editor' : 'viewer';
+                            setCanEdit(data.shareMode !== 'viewer');
+                        }
+                    } else {
+                        resolvedRole = data.shareMode !== 'viewer' ? 'editor' : 'viewer';
+                        setCanEdit(data.shareMode !== 'viewer');
+                    }
+                } else {
+                    // Brand new workspace — create it
+                    await setDoc(doc(db, "workspaces", params.id), {
+                        userId: user.uid,
+                        title: resolvedTitle,
+                        createdAt: new Date().toISOString(),
+                        shareMode: 'editor',
+                        editTokens: [],
+                        viewTokens: [],
+                    });
+                    resolvedRole = 'owner';
+                    setWorkspaceTitle(resolvedTitle);
+                    setIsOwner(true);
+                    setCanEdit(true);
+                }
+
+                // 3. ── Industry-Standard Join Write ──────────────────────────────────────
+                // Write a lightweight index entry into userWorkspaces/{uid}/items/{workspaceId}.
+                // This is how Notion/Linear/Figma list all workspaces a user has access to
+                // without scanning the entire workspaces collection or using array-contains.
+                // The library page reads THIS subcollection — fast O(1) per user, role-aware.
+                await setDoc(
+                    doc(db, "userWorkspaces", user.uid, "items", params.id),
+                    {
+                        workspaceId: params.id,
+                        role: resolvedRole,           // 'owner' | 'editor' | 'viewer'
+                        title: resolvedTitle,
+                        updatedAt: new Date().toISOString(),
+                    },
+                    { merge: true }
+                );
+
+            } catch (e) {
+                console.warn("[FlowState] Could not load workspace data from Firestore:", e);
+            } finally {
+                setLibraryLoaded(true);
+            }
+        };
+        fetchWorkspaceData();
+    }, [user, authLoading, params.id, searchParams]);
+
+
+    // Detect #addLibrary=... hash
     useEffect(() => {
         const parseHash = () => {
             const hash = window.location.hash;
             if (!hash.startsWith('#addLibrary=')) return;
-            const params = new URLSearchParams(hash.slice(1));
-            const libUrl = params.get('addLibrary');
+            const p = new URLSearchParams(hash.slice(1));
+            const libUrl = p.get('addLibrary');
             if (libUrl) {
                 setPendingLibraryUrl(libUrl);
-                // Clear hash without triggering another hashchange
                 window.history.replaceState(null, '', window.location.pathname + window.location.search);
             }
         };
-
-        // Handle on initial page load (redirect arrives with hash already in URL)
         parseHash();
         window.addEventListener('hashchange', parseHash);
         return () => window.removeEventListener('hashchange', parseHash);
     }, []);
 
-    // Once a library URL is pending AND the Excalidraw API is ready, load it
+    // Load library from pending URL
     useEffect(() => {
         if (!pendingLibraryUrl) return;
-
         const interval = setInterval(async () => {
             if (!excalidrawRef.current) return;
             clearInterval(interval);
-
             try {
                 const { loadLibraryFromBlob } = await import('@excalidraw/excalidraw');
                 const proxyUrl = `/api/library-proxy?url=${encodeURIComponent(pendingLibraryUrl)}`;
@@ -76,41 +165,74 @@ export default function WorkspacePage({ params }: { params: { id: string } }) {
                 const json = await res.json();
                 const blob = new Blob([JSON.stringify(json)], { type: 'application/json' });
                 const libraryItems = await loadLibraryFromBlob(blob);
-
-                await excalidrawRef.current.updateLibrary({
-                    libraryItems,
-                    merge: true,
-                    openLibraryMenu: true,
-                });
-
+                await excalidrawRef.current.updateLibrary({ libraryItems, merge: true, openLibraryMenu: true });
                 setPendingLibraryUrl(null);
             } catch (e) {
                 console.error('Failed to install library from hash:', e);
                 setPendingLibraryUrl(null);
             }
         }, 300);
-
         return () => clearInterval(interval);
     }, [pendingLibraryUrl]);
 
-    // Persist library items to localStorage whenever they change
-    const handleLibraryChange = (items: LibraryItems) => {
+    // Persist library items to Firestore
+    const handleLibraryChange = async (items: LibraryItems) => {
+        if (!user) return;
+
+        // Guard: Excalidraw fires onLibraryChange([]) on mount before items are loaded.
+        // Without this guard that empty call would wipe whatever was saved in Firestore.
+        if (items.length === 0) return;
+
         try {
-            localStorage.setItem(LIBRARY_STORAGE_KEY, JSON.stringify(items));
+            // Use setDoc+merge so it works for new users who don't have a users/{uid} doc yet.
+            // updateDoc throws "No document to update" for new users, losing their library items.
+            await setDoc(doc(db, "users", user.uid), {
+                excalidrawLibrary: JSON.stringify(items)
+            }, { merge: true });
+            console.log(`[FlowState] 💾 Saved ${items.length} library items to Firestore.`);
         } catch (e) {
-            console.warn("Could not save library to storage:", e);
+            console.error("[FlowState] Could not save library to Firestore:", e);
         }
     };
+
+
+    if (!libraryLoaded) {
+        return (
+            <div className="flex items-center justify-center w-full h-screen bg-[#f8f9fa]">
+                <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+                    <span className="text-sm text-gray-400 font-medium">Loading workspace data...</span>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div style={{ width: "100vw", height: "100vh" }}>
             <ExcalidrawWrapper
                 excalidrawRef={excalidrawRef}
                 savedLibraryItems={savedLibraryItems}
+                initialElements={initialElements}
+                initialAppState={initialAppState}
                 onLibraryChange={handleLibraryChange}
                 onBack={() => router.push('/library')}
                 workspaceId={params.id}
+                workspaceTitle={workspaceTitle}
+                isOwner={isOwner}
+                canEdit={canEdit}
             />
         </div>
+    );
+}
+
+export default function WorkspacePage({ params }: { params: { id: string } }) {
+    return (
+        <Suspense fallback={
+            <div className="flex items-center justify-center w-full h-screen bg-[#f8f9fa]">
+                <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+        }>
+            <WorkspacePageInner params={params} />
+        </Suspense>
     );
 }

@@ -20,6 +20,9 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/useAuth";
 
 const BACKEND_WS = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8000";
 
@@ -102,30 +105,49 @@ export function useAISession({
         });
     }, []);
 
-    // ── Persistence ──────────────────────────────────────────────────────────
+    const { user } = useAuth();
+
+    // ── Persistence (Firestore) ──────────────────────────────────────────────────────────
     useEffect(() => {
-        const key = `fs-history-${workspaceId}`;
-        const saved = localStorage.getItem(key);
-        if (saved) {
+        if (!user) return;
+        const fetchHistory = async () => {
             try {
-                setHistory(JSON.parse(saved));
+                const docRef = doc(db, "workspaces", workspaceId);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists() && docSnap.data().chats) {
+                    setHistory(docSnap.data().chats);
+                }
             } catch (e) {
-                console.warn("[FlowState] failed to load history:", e);
+                console.warn("[FlowState] failed to load history from Firestore:", e);
+            }
+        };
+        fetchHistory();
+    }, [workspaceId, user]);
+
+    useEffect(() => {
+        if (!user || history.length === 0) return;
+        const saveHistory = async () => {
+            try {
+                const docRef = doc(db, "workspaces", workspaceId);
+                // Use setDoc with merge instead of updateDoc in case the workspace doc doesn't exist yet
+                await setDoc(docRef, { chats: history }, { merge: true });
+            } catch (e) {
+                console.warn("[FlowState] failed to save history to Firestore:", e);
+            }
+        };
+        saveHistory();
+    }, [history, workspaceId, user]);
+
+    const clearHistory = useCallback(async () => {
+        setHistory([]);
+        if (user) {
+            try {
+                await updateDoc(doc(db, "workspaces", workspaceId), { chats: [] });
+            } catch (e) {
+                console.warn("[FlowState] failed to clear history in Firestore:", e);
             }
         }
-    }, [workspaceId]);
-
-    useEffect(() => {
-        const key = `fs-history-${workspaceId}`;
-        if (history.length > 0) {
-            localStorage.setItem(key, JSON.stringify(history));
-        }
-    }, [history, workspaceId]);
-
-    const clearHistory = useCallback(() => {
-        setHistory([]);
-        localStorage.removeItem(`fs-history-${workspaceId}`);
-    }, [workspaceId]);
+    }, [workspaceId, user]);
 
     const wsRef = useRef<WebSocket | null>(null);
     const micCtxRef = useRef<AudioContext | null>(null);

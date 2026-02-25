@@ -12,6 +12,9 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, User, Sparkles, Mic, Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/useAuth";
+import { doc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 interface Props {
     onClose: () => void;
@@ -19,19 +22,44 @@ interface Props {
 
 export default function NewWorkspaceModal({ onClose }: Props) {
     const router = useRouter();
+    const { user } = useAuth();
     const [loading, setLoading] = useState(false);
+    const [title, setTitle] = useState("");
 
-    const workspaceId = () => Math.random().toString(36).substring(2, 9);
+    const generateProfessionalId = () => {
+        const chars = '0123456780abcdef'; // Sleek hex-like
+        let result = '';
+        for (let i = 0; i < 8; i++) {
+            result += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        return result;
+    };
+
+    const createWorkspaceDoc = async (id: string, mode: string) => {
+        if (!user) return;
+        await setDoc(doc(db, "workspaces", id), {
+            userId: user.uid,
+            title: title.trim() || "Untitled Architecture",
+            subtitle: mode === "assisted" ? "AI Assisted Session" : "Personal Workspace",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+        });
+    };
 
     // Personal mode — just open the canvas
-    const openPersonal = () => {
-        router.push(`/workspace/${workspaceId()}?mode=personal`);
+    const openPersonal = async () => {
+        setLoading(true);
+        const id = generateProfessionalId();
+        await createWorkspaceDoc(id, "personal");
+        router.push(`/workspace/${id}?mode=personal`);
     };
 
     // Assisted mode — open canvas with AI session flag
-    const openAssisted = () => {
+    const openAssisted = async () => {
         setLoading(true);
-        router.push(`/workspace/${workspaceId()}?mode=assisted`);
+        const id = generateProfessionalId();
+        await createWorkspaceDoc(id, "assisted");
+        router.push(`/workspace/${id}?mode=assisted`);
     };
 
     return (
@@ -54,7 +82,7 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                 </button>
 
                 {/* Header */}
-                <div className="mb-8">
+                <div className="mb-6">
                     <h2 className="text-2xl font-semibold text-gray-900 mb-1">
                         New Workspace
                     </h2>
@@ -63,13 +91,27 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                     </p>
                 </div>
 
+                {/* Title Input */}
+                <div className="mb-8">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Workspace Title</label>
+                    <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="e.g. Payment Gateway Architecture"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#536ea1]/30 focus:border-[#536ea1] transition-all"
+                        disabled={loading}
+                    />
+                </div>
+
                 {/* Two mode cards */}
                 <div className="grid grid-cols-2 gap-4">
 
                     {/* ── Personal mode ────────────────────────────────── */}
                     <button
                         onClick={openPersonal}
-                        className="group flex flex-col items-start p-6 rounded-2xl border-2 border-gray-200 hover:border-gray-400 bg-white hover:bg-gray-50 transition-all text-left"
+                        disabled={loading}
+                        className="group flex flex-col items-start p-6 rounded-2xl border-2 border-gray-200 hover:border-gray-400 bg-white hover:bg-gray-50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         <div className="w-11 h-11 rounded-2xl bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center mb-4 transition-colors">
                             <User className="w-5 h-5 text-gray-600" />

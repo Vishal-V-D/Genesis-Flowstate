@@ -1,4 +1,12 @@
-export default function Footer() {
+"use client";
+
+export default function Footer({
+    hoverStyle = "tear",
+    onHoverStyleChange
+}: {
+    hoverStyle?: "svgMask" | "tear" | "smooth" | "splatter" | "glitch";
+    onHoverStyleChange?: (style: "svgMask" | "tear" | "smooth" | "splatter" | "glitch") => void;
+}) {
     return (
         <footer className="w-full bg-white border-t border-gray-100 py-16 px-6 mt-16 relative z-10">
             <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
@@ -40,7 +48,22 @@ export default function Footer() {
 
             <div className="max-w-6xl mx-auto mt-16 pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center text-gray-400 text-sm">
                 <p>© 2026 Kira FlowState. All rights reserved.</p>
-                <div className="flex gap-6 mt-4 md:mt-0">
+                <div className="flex items-center gap-6 mt-4 md:mt-0">
+                    <div className="flex items-center gap-2">
+                        <label htmlFor="hover-style" className="text-gray-500">Hover Style:</label>
+                        <select
+                            id="hover-style"
+                            value={hoverStyle}
+                            onChange={(e) => onHoverStyleChange?.(e.target.value as any)}
+                            className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-md focus:ring-google-blue focus:border-google-blue block px-2 py-1 outline-none cursor-pointer"
+                        >
+                            <option value="svgMask">Original Mask</option>
+                            <option value="tear">Paper Tear</option>
+                            <option value="smooth">Smooth Tear</option>
+                            <option value="splatter">Splatter Tear</option>
+                            <option value="glitch">Glitch Tear</option>
+                        </select>
+                    </div>
                     <a href="#" className="hover:text-gray-600">Privacy Policy</a>
                     <a href="#" className="hover:text-gray-600">Terms of Service</a>
                 </div>
