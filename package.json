@@ -20,6 +20,7 @@
     "react": "^18",
     "react-dom": "^18",
     "react-joyride": "^2.9.3",
+    "resend": "^6.9.2",
     "tailwind-merge": "^2.3.0"
   },
   "devDependencies": {

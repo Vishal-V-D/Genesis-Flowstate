@@ -1,14 +1,17 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Plus, Download, Search, ArrowLeft, Sparkles, User as UserIcon, LogOut, Settings, MoreVertical, Trash2 } from 'lucide-react';
+import { Plus, Download, Search, ArrowLeft, Sparkles, User as UserIcon, LogOut, Settings, MoreVertical, Trash2, Info, ExternalLink, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import NewWorkspaceModal from '@/components/workspace/NewWorkspaceModal';
+import InviteModal from '@/components/workspace/InviteModal';
 import { useAuth } from '@/hooks/useAuth';
 import { auth, db } from '@/lib/firebase';
 import { signOut } from 'firebase/auth';
 import { collection, query, where, getDocs, getDoc, orderBy, deleteDoc, doc as firestoreDoc } from 'firebase/firestore';
+
+import LibraryLoading from './loading';
 
 // Colors for the workspaces
 const workspaceColors = [
@@ -26,6 +29,7 @@ interface Workspace {
     nodes: number;
     color: string;
     accent: string;
+    role: string;
 }
 
 // SVG mini-diagrammatic previews unique per card
@@ -90,13 +94,22 @@ const DiagramPreviews = [
     ),
 ];
 
+// --- Client-side Memory Cache ---
+// This ensures that when the user navigates back to the library,
+// the workspaces load instantly without showing a loading skeleton.
+let globalCachedWorkspaces: Workspace[] | null = null;
+let globalLastFetchTime = 0;
+
 export default function LibraryPage() {
     const [searchQuery, setSearchQuery] = useState('');
-    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-    const [fetching, setFetching] = useState(true);
+    const [workspaces, setWorkspaces] = useState<Workspace[]>(globalCachedWorkspaces || []);
+    // Only show the blocking fetching state if we have no cache at all.
+    const [fetching, setFetching] = useState(globalCachedWorkspaces === null);
     const [showModal, setShowModal] = useState(false);
     const [showProfileMenu, setShowProfileMenu] = useState(false);
     const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean, workspaceId: string, title: string } | null>(null);
+    const [propertiesModal, setPropertiesModal] = useState<Workspace | null>(null);
+    const [shareModal, setShareModal] = useState<Workspace | null>(null);
     const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
     const profileMenuRef = useRef<HTMLDivElement>(null);
     const router = useRouter();
@@ -161,7 +174,7 @@ export default function LibraryPage() {
                         const data = wsDoc.exists() ? wsDoc.data() as any : {};
 
                         let nodeCount = 0;
-                        if (data.elements) {
+                        if (data.elements && data.elements !== "undefined") {
                             try {
                                 const els = JSON.parse(data.elements);
                                 nodeCount = Array.isArray(els) ? els.length : 0;
@@ -180,6 +193,7 @@ export default function LibraryPage() {
                             nodes: nodeCount,
                             color: scheme.color,
                             accent: scheme.accent,
+                            role: item.role,
                         };
                     })
                 );
@@ -187,6 +201,10 @@ export default function LibraryPage() {
                 // Sort by most recently updated
                 loaded.sort((a, b) => new Date(b.lastEdited).getTime() - new Date(a.lastEdited).getTime());
                 setWorkspaces(loaded);
+
+                // Update global cache
+                globalCachedWorkspaces = loaded;
+                globalLastFetchTime = Date.now();
             } catch (err) {
                 console.error("Error fetching workspaces:", err);
             } finally {
@@ -211,14 +229,67 @@ export default function LibraryPage() {
         if (!deleteModal || !user) return;
         try {
             await deleteDoc(firestoreDoc(db, "workspaces", deleteModal.workspaceId));
-            setWorkspaces(prev => prev.filter(w => w.id !== deleteModal.workspaceId));
+            const newWorkspaces = workspaces.filter(w => w.id !== deleteModal.workspaceId);
+            setWorkspaces(newWorkspaces);
+            globalCachedWorkspaces = newWorkspaces; // Update cache
             setDeleteModal(null);
         } catch (err) {
             console.error("Error deleting workspace:", err);
         }
     };
 
-    if (loading || !user || fetching) return <div className="min-h-screen bg-[#f0f4f9]" />;
+    const handleDownloadWorkspace = async (e: React.MouseEvent, workspaceId: string, title: string) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+            const wsDoc = await getDoc(firestoreDoc(db, "workspaces", workspaceId));
+            if (!wsDoc.exists()) return;
+
+            const data = wsDoc.data();
+            let elements: any[] = [];
+            let appState: any = {};
+            let files: any = {};
+
+            if (data.elements && data.elements !== "undefined") {
+                try { elements = JSON.parse(data.elements); } catch (e) { }
+            }
+            if (data.appState && data.appState !== "undefined") {
+                try { appState = JSON.parse(data.appState); } catch (e) { }
+            }
+            if (data.files && data.files !== "undefined") {
+                try { files = JSON.parse(data.files); } catch (e) { }
+            }
+
+            const excalidrawState = {
+                type: "excalidraw",
+                version: 2,
+                source: process.env.NEXT_PUBLIC_APP_URL || (typeof window !== 'undefined' ? window.location.origin : "http://localhost:3000"),
+                elements,
+                appState: {
+                    viewBackgroundColor: appState.viewBackgroundColor || "#ffffff",
+                    gridSize: appState.gridSize || null,
+                },
+                files
+            };
+
+            const blob = new Blob([JSON.stringify(excalidrawState, null, 2)], {
+                type: "application/vnd.excalidraw+json",
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${title.replace(/\s+/g, "_") || "workspace"}.excalidraw`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error("Error downloading workspace:", error);
+            alert("Failed to download workspace.");
+        }
+    };
+
+    if (loading || !user || fetching) return <LibraryLoading />;
 
     const filtered = workspaces.filter(w =>
         w.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -376,6 +447,19 @@ export default function LibraryPage() {
                                 setDeleteModal({ isOpen: true, workspaceId: ws.id, title: ws.title });
                                 setMenuOpenId(null);
                             }}
+                            onPropertiesClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setPropertiesModal(ws);
+                                setMenuOpenId(null);
+                            }}
+                            onShareClick={(e) => {
+                                e.stopPropagation();
+                                e.preventDefault();
+                                setShareModal(ws);
+                                setMenuOpenId(null);
+                            }}
+                            onDownloadClick={(e) => handleDownloadWorkspace(e, ws.id, ws.title)}
                             isMenuOpen={menuOpenId === ws.id}
                             toggleMenu={(e) => {
                                 e.stopPropagation();
@@ -396,6 +480,80 @@ export default function LibraryPage() {
 
             {/* Workspace creation modal */}
             {showModal && <NewWorkspaceModal onClose={() => setShowModal(false)} />}
+
+            {/* Properties Modal */}
+            <AnimatePresence>
+                {propertiesModal && (
+                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setPropertiesModal(null)}
+                            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+                        />
+                        <motion.div
+                            initial={{ scale: 0.95, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.95, opacity: 0 }}
+                            className="relative w-full max-w-sm bg-[#f8f9fa] rounded-lg shadow-[0_4px_24px_rgba(0,0,0,0.2)] border border-[#e0e0e0] p-6 font-sans text-sm text-gray-800"
+                        >
+                            <div className="flex items-center gap-3 mb-4 pb-4 border-b border-gray-200">
+                                <div className="w-10 h-10 rounded shadow-sm flex items-center justify-center" style={{ backgroundColor: propertiesModal.color }}>
+                                    <span className="text-white font-medium text-lg">{propertiesModal.title.substring(0, 1).toUpperCase()}</span>
+                                </div>
+                                <div className="flex-1 overflow-hidden">
+                                    <h2 className="text-base font-semibold text-gray-900 truncate">{propertiesModal.title}</h2>
+                                    <p className="text-xs text-gray-500 truncate">{propertiesModal.subtitle}</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3 mb-6">
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Type:</span>
+                                    <span className="flex-1">Excalidraw Workspace</span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Location:</span>
+                                    <span className="flex-1 font-mono text-xs break-all truncate" title={propertiesModal.id}>Cloud ({propertiesModal.id.substring(0, 8)}...)</span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Elements:</span>
+                                    <span className="flex-1">{propertiesModal.nodes} nodes</span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Color:</span>
+                                    <span className="flex-1 flex items-center gap-2">
+                                        <div className="w-4 h-4 rounded-full border border-gray-300" style={{ backgroundColor: propertiesModal.color }} />
+                                        <span className="font-mono text-xs uppercase">{propertiesModal.color}</span>
+                                    </span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Role:</span>
+                                    <span className="flex-1 capitalize">{propertiesModal.role === 'owner' ? 'Owner (Me)' : propertiesModal.role}</span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Created By:</span>
+                                    <span className="flex-1">{propertiesModal.role === 'owner' ? 'You' : 'Another User'}</span>
+                                </div>
+                                <div className="flex">
+                                    <span className="w-24 text-gray-500 font-medium">Last Modified:</span>
+                                    <span className="flex-1">{propertiesModal.lastEdited}</span>
+                                </div>
+                            </div>
+
+                            <div className="flex justify-end pt-4 border-t border-gray-200">
+                                <button
+                                    onClick={() => setPropertiesModal(null)}
+                                    className="px-6 py-1.5 border border-gray-300 bg-gray-50 hover:bg-gray-100 rounded text-gray-900 transition-colors"
+                                >
+                                    OK
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
 
             {/* Delete Confirmation Modal */}
             <AnimatePresence>
@@ -441,15 +599,26 @@ export default function LibraryPage() {
                     </div>
                 )}
             </AnimatePresence>
+
+            {/* Share Modal */}
+            <InviteModal
+                isOpen={!!shareModal}
+                onClose={() => setShareModal(null)}
+                workspaceId={shareModal?.id || ''}
+                workspaceTitle={shareModal?.title || ''}
+            />
         </main>
     );
 }
 
-function WorkspaceCard({ workspace, diagramIndex, onClick, onDeleteClick, isMenuOpen, toggleMenu }: {
+function WorkspaceCard({ workspace, diagramIndex, onClick, onDeleteClick, onPropertiesClick, onShareClick, onDownloadClick, isMenuOpen, toggleMenu }: {
     workspace: Workspace,
     diagramIndex: number,
     onClick: () => void,
     onDeleteClick: (e: React.MouseEvent) => void,
+    onPropertiesClick: (e: React.MouseEvent) => void,
+    onShareClick: (e: React.MouseEvent) => void,
+    onDownloadClick: (e: React.MouseEvent) => void,
     isMenuOpen: boolean,
     toggleMenu: (e: React.MouseEvent) => void
 }) {
@@ -457,9 +626,8 @@ function WorkspaceCard({ workspace, diagramIndex, onClick, onDeleteClick, isMenu
     const preview = DiagramPreviews[workspace.id.charCodeAt(0) % DiagramPreviews.length];
 
     return (
-        <Link
-            href={`/workspace/${workspace.id}`}
-            className="group relative w-full aspect-[5/4] rounded-[2rem] shadow-xl hover:shadow-2xl transition-all cursor-pointer overflow-hidden hover:-translate-y-1.5"
+        <div
+            className="group relative w-full aspect-[5/4] rounded-[2rem] shadow-xl hover:shadow-2xl transition-all overflow-hidden hover:-translate-y-1.5"
             style={{ backgroundColor: workspace.color }}
         >
             {/* Tabbed Header Background (Darker accent) */}
@@ -494,8 +662,30 @@ function WorkspaceCard({ workspace, diagramIndex, onClick, onDeleteClick, isMenu
                                 initial={{ opacity: 0, scale: 0.95, y: -10 }}
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                className="absolute right-0 top-10 w-40 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden"
+                                className="absolute right-0 top-10 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden"
                             >
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); toggleMenu(e); onClick(); }}
+                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left font-medium"
+                                >
+                                    <ExternalLink className="w-4 h-4" />
+                                    Open Workspace
+                                </button>
+                                <div className="h-px bg-gray-100 my-1"></div>
+                                <button
+                                    onClick={onPropertiesClick}
+                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left"
+                                >
+                                    <Info className="w-4 h-4" />
+                                    Properties
+                                </button>
+                                <button
+                                    onClick={onShareClick}
+                                    className="w-full flex items-center gap-3 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors text-left"
+                                >
+                                    <Users className="w-4 h-4" />
+                                    Share
+                                </button>
                                 <button
                                     onClick={onDeleteClick}
                                     className="w-full flex items-center gap-3 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left"
@@ -510,39 +700,51 @@ function WorkspaceCard({ workspace, diagramIndex, onClick, onDeleteClick, isMenu
             </div>
 
             {/* Inner white canvas - floating offset */}
-            <div
-                className="absolute bg-[#f0f2f5] overflow-hidden border border-white/10 shadow-inner z-0"
+            <button
+                onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onClick();
+                }}
+                className="absolute bg-[#f0f2f5] overflow-hidden border border-white/10 shadow-inner z-0 cursor-pointer hover:bg-white transition-colors flex flex-col items-center justify-center p-0 m-0 outline-none"
                 style={{
                     top: '3.5rem',
                     left: '1.25rem',
                     right: '1.25rem',
                     bottom: '1.25rem',
-                    borderRadius: '4rem 1.5rem 2.5rem 1.5rem'
+                    borderRadius: '4rem 1.5rem 2.5rem 1.5rem',
+                    width: 'auto',
+                    height: 'auto'
                 }}
             >
                 {/* Mini diagram preview */}
-                <div className="w-full h-full flex items-center justify-center p-8 opacity-60">
+                <div className="w-full h-full flex flex-col items-center justify-center p-8 opacity-60 pointer-events-none">
                     {preview}
                 </div>
-            </div>
+            </button>
 
             {/* Action FAB button (Bottom Right) */}
-            <div
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    onDownloadClick(e);
+                }}
                 className="absolute bottom-6 right-7 w-12 h-12 rounded-full flex items-center justify-center shadow-lg z-20 group-hover:scale-110 transition-transform"
                 style={{ backgroundColor: workspace.accent }}
             >
-                <Download className="w-5 h-5 text-white" />
-            </div>
+                <Download className="w-5 h-5 text-white pointer-events-none" />
+            </button>
 
             {/* subtle info on hover */}
-            <div className="absolute bottom-6 left-10 flex items-center gap-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute bottom-6 left-10 flex items-center gap-3 z-10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                 <div
-                    className="text-[10px] font-bold tracking-widest uppercase"
+                    className="text-[10px] font-bold tracking-widest uppercase pointer-events-none"
                     style={{ color: workspace.accent }}
                 >
                     {workspace.lastEdited}
                 </div>
             </div>
-        </Link>
+        </div>
     );
 }

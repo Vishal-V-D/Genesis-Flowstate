@@ -7,8 +7,20 @@ import type { LibraryItems } from "@excalidraw/excalidraw/types";
 import { useAuth } from "@/hooks/useAuth";
 import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import WorkspaceLoading from '../loading';
 
 const LIBRARY_STORAGE_KEY = "kira-excalidraw-library";
+
+// --- Client-side Memory Cache ---
+// Caches workspace data by ID so navigating back to a workspace is instant.
+const globalWorkspaceCache: Record<string, {
+    savedLibraryItems: LibraryItems;
+    initialElements: any[] | null;
+    initialAppState: any | null;
+    workspaceTitle: string;
+    isOwner: boolean;
+    canEdit: boolean;
+}> = {};
 
 const ExcalidrawWrapper = dynamic(() => import("./ExcalidrawWrapper"), {
     ssr: false,
@@ -26,16 +38,20 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
     const router = useRouter();
     const searchParams = useSearchParams();
     const excalidrawRef = useRef<any>(null);
-    const [savedLibraryItems, setSavedLibraryItems] = useState<LibraryItems>([]);
+
+    const cached = globalWorkspaceCache[params.id];
+
+    const [savedLibraryItems, setSavedLibraryItems] = useState<LibraryItems>(cached?.savedLibraryItems || []);
     const [pendingLibraryUrl, setPendingLibraryUrl] = useState<string | null>(null);
-    const [libraryLoaded, setLibraryLoaded] = useState(false);
+    // If we have cached data, no need to show the loading screen initially.
+    const [libraryLoaded, setLibraryLoaded] = useState(!!cached);
 
     // Canvas Document State
-    const [initialElements, setInitialElements] = useState<any[] | null>(null);
-    const [initialAppState, setInitialAppState] = useState<any | null>(null);
-    const [workspaceTitle, setWorkspaceTitle] = useState<string>("");
-    const [isOwner, setIsOwner] = useState(false);
-    const [canEdit, setCanEdit] = useState(false);
+    const [initialElements, setInitialElements] = useState<any[] | null>(cached?.initialElements || null);
+    const [initialAppState, setInitialAppState] = useState<any | null>(cached?.initialAppState || null);
+    const [workspaceTitle, setWorkspaceTitle] = useState<string>(cached?.workspaceTitle || "");
+    const [isOwner, setIsOwner] = useState(cached?.isOwner || false);
+    const [canEdit, setCanEdit] = useState(cached?.canEdit || false);
 
     // Enforce authentication for workspace access
     const { user, loading: authLoading } = useAuth(true);
@@ -48,12 +64,17 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
             try {
                 const shareToken = searchParams?.get("token") ?? null;
 
+                let newSavedLibraryItems: LibraryItems = [];
+                let newInitialElements: any[] | null = null;
+                let newInitialAppState: any | null = null;
+
                 // 1. Load User Library Items
                 const userDoc = await getDoc(doc(db, "users", user.uid));
                 if (userDoc.exists() && userDoc.data().excalidrawLibrary) {
                     const parsed = JSON.parse(userDoc.data().excalidrawLibrary);
                     if (Array.isArray(parsed) && parsed.length > 0) {
                         setSavedLibraryItems(parsed);
+                        newSavedLibraryItems = parsed;
                     }
                 }
 
@@ -62,14 +83,25 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
 
                 let resolvedTitle = "Untitled Architecture";
                 let resolvedRole: 'owner' | 'editor' | 'viewer' = 'viewer';
+                let owner = false;
 
                 if (workspaceDoc.exists()) {
                     const data = workspaceDoc.data();
                     if (data.title) { resolvedTitle = data.title; setWorkspaceTitle(data.title); }
-                    if (data.elements) setInitialElements(JSON.parse(data.elements));
-                    if (data.appState) setInitialAppState(JSON.parse(data.appState));
+                    if (data.elements && data.elements !== "undefined") {
+                        try {
+                            newInitialElements = JSON.parse(data.elements);
+                            setInitialElements(newInitialElements);
+                        } catch (e) { console.error("Error parsing elements", e); }
+                    }
+                    if (data.appState && data.appState !== "undefined") {
+                        try {
+                            newInitialAppState = JSON.parse(data.appState);
+                            setInitialAppState(newInitialAppState);
+                        } catch (e) { console.error("Error parsing appState", e); }
+                    }
 
-                    const owner = data.userId === user.uid;
+                    owner = data.userId === user.uid;
                     setIsOwner(owner);
 
                     if (owner) {
@@ -123,6 +155,16 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
                     },
                     { merge: true }
                 );
+
+                // Update cache successfully
+                globalWorkspaceCache[params.id] = {
+                    savedLibraryItems: newSavedLibraryItems,
+                    initialElements: newInitialElements,
+                    initialAppState: newInitialAppState,
+                    workspaceTitle: resolvedTitle,
+                    isOwner: owner,
+                    canEdit: resolvedRole !== 'viewer',
+                };
 
             } catch (e) {
                 console.warn("[FlowState] Could not load workspace data from Firestore:", e);
@@ -197,14 +239,7 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
 
 
     if (!libraryLoaded) {
-        return (
-            <div className="flex items-center justify-center w-full h-screen bg-[#f8f9fa]">
-                <div className="flex flex-col items-center gap-3">
-                    <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-                    <span className="text-sm text-gray-400 font-medium">Loading workspace data...</span>
-                </div>
-            </div>
-        );
+        return <WorkspaceLoading />;
     }
 
     return (
@@ -227,11 +262,7 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
 
 export default function WorkspacePage({ params }: { params: { id: string } }) {
     return (
-        <Suspense fallback={
-            <div className="flex items-center justify-center w-full h-screen bg-[#f8f9fa]">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-            </div>
-        }>
+        <Suspense fallback={<WorkspaceLoading />}>
             <WorkspacePageInner params={params} />
         </Suspense>
     );

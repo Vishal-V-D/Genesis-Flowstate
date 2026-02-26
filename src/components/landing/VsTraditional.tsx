@@ -4,7 +4,8 @@ import { Check, X } from "lucide-react";
 
 export default function VsTraditional() {
     return (
-        <section className="w-full max-w-5xl mx-auto py-24 px-6 relative z-10">
+        <div className="bg-[#f8f9fa]">
+        <section className="w-full max-w-6xl mx-auto py-24 px-6 relative z-10">
             <div className="text-center mb-16">
                 <h2 className="text-4xl font-[300] text-gray-900 mb-4">FlowState vs Traditional</h2>
                 <p className="text-gray-500 text-lg">See why static whiteboards are outdated.</p>
@@ -43,5 +44,6 @@ export default function VsTraditional() {
                 </table>
             </div>
         </section>
+        </div>
     );
 }

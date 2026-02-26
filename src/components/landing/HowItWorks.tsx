@@ -18,13 +18,37 @@ export default function HowItWorks() {
                 <p className="text-gray-500 text-lg">Three steps to architecting the future.</p>
             </div>
 
-            <div className="relative">
-                {/* Animated Connection Line */}
-                <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -translate-y-1/2 z-0 hidden md:block">
-                    <motion.div
-                        style={{ scaleX, transformOrigin: 'left' }}
-                        className="w-full h-full bg-gradient-to-r from-google-blue via-google-red to-google-yellow"
-                    />
+            <div className="relative pt-32 md:pt-40">
+                {/* Animated Connection Circular Arcs - Adjusted for perfect spacious alignment */}
+                <div className="absolute top-0 left-[16.666%] w-[66.666%] h-40 md:h-48 z-0 hidden md:block pointer-events-none">
+                    <svg className="w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 100">
+                        {/* Background trace */}
+                        <path
+                            d="M 0 100 Q 25 -30 50 100 Q 75 -30 100 100"
+                            fill="none"
+                            stroke="#e5e7eb"
+                            strokeWidth="3"
+                            strokeDasharray="4 6"
+                            vectorEffect="non-scaling-stroke"
+                        />
+                        {/* Animated trace */}
+                        <motion.path
+                            d="M 0 100 Q 25 -30 50 100 Q 75 -30 100 100"
+                            fill="none"
+                            stroke="url(#gradient-progress)"
+                            strokeWidth="4"
+                            strokeLinecap="round"
+                            vectorEffect="non-scaling-stroke"
+                            style={{ pathLength: scaleX }}
+                        />
+                        <defs>
+                            <linearGradient id="gradient-progress" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <stop offset="0%" stopColor="#1a73e8" />
+                                <stop offset="50%" stopColor="#ea4335" />
+                                <stop offset="100%" stopColor="#fbbc04" />
+                            </linearGradient>
+                        </defs>
+                    </svg>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-12 relative z-10">

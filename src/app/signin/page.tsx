@@ -46,7 +46,7 @@ export default function SignIn() {
             }
 
             setIsLoading(false);
-            window.location.href = "/library";
+            router.push("/library");
         } catch (err: any) {
             console.error("Sign in error:", err);
             setError("Invalid email or password. Please try again.");
