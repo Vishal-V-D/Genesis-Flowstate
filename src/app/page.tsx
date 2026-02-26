@@ -10,20 +10,33 @@ import CTASection from '@/components/landing/CTASection';
 import Footer from '@/components/landing/Footer';
 import { PaperTearEffect } from '@/components/ui/paper-tear-effect';
 import { MaskContainer } from '@/components/ui/svg-mask-effect';
+import { WatercolorBackground } from '@/components/landing/WatercolorBackground';
 import { useAuth } from '@/hooks/useAuth';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '@/lib/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
+import { Paintbrush } from 'lucide-react';
 
 export default function Home() {
     const { user, loading } = useAuth();
     const [hoverStyle, setHoverStyle] = useState<"svgMask" | "tear" | "smooth" | "splatter" | "glitch">("tear");
+    const [showWatercolor, setShowWatercolor] = useState(false);
 
+    // Load settings from localStorage and user profile
     useEffect(() => {
+        const savedWatercolor = localStorage.getItem('showWatercolor') === 'true';
+        setShowWatercolor(savedWatercolor);
+
         if (user && user.hoverStyle) {
             setHoverStyle(user.hoverStyle);
         }
     }, [user]);
+
+    const handleWatercolorToggle = () => {
+        const newValue = !showWatercolor;
+        setShowWatercolor(newValue);
+        localStorage.setItem('showWatercolor', String(newValue));
+    };
 
     const handleHoverChange = async (style: "svgMask" | "tear" | "smooth" | "splatter" | "glitch") => {
         setHoverStyle(style);
@@ -47,8 +60,9 @@ export default function Home() {
 
     return (
         <main className="relative z-10 w-full overflow-x-hidden">
+            {showWatercolor && <WatercolorBackground />}
             {/* Nav Header - landing page only */}
-            <header className="absolute top-0 w-full p-6 flex justify-between items-center z-10">
+            <header className="absolute top-0 w-full p-6 flex justify-between items-center z-[100]">
                 <div className="flex gap-6 items-center text-sm font-medium text-gray-500">
                     <span className="text-gray-900 font-semibold cursor-pointer">FlowState</span>
                     <Link href="#features" className="cursor-pointer hover:text-gray-900 transition-colors">Features</Link>
@@ -56,6 +70,13 @@ export default function Home() {
                     <Link href="#compare" className="cursor-pointer hover:text-gray-900 transition-colors">Compare</Link>
                 </div>
                 <div className="flex items-center gap-4">
+                    <button
+                        onClick={handleWatercolorToggle}
+                        className={`p-2 rounded-full transition-all ${showWatercolor ? 'bg-purple-100 text-purple-600 shadow-inner' : 'bg-gray-100/50 text-gray-400 hover:text-gray-600'}`}
+                        title="Toggle Watercolor Effect"
+                    >
+                        <Paintbrush className="w-5 h-5" />
+                    </button>
                     {user ? (
                         <div className="flex items-center gap-4">
                             <span className="text-sm font-medium text-gray-600 hidden sm:block">
@@ -78,8 +99,23 @@ export default function Home() {
             </header>
 
             {/* Hero Section - Full Viewport Height */}
-            <section className="flex flex-col items-center justify-center w-full min-h-[100vh] p-8 text-center relative">
-                {hoverStyle === "svgMask" ? (
+            <section className="flex flex-col items-center justify-center w-full min-h-[100vh] p-8 text-center relative overflow-hidden">
+                
+
+                {showWatercolor ? (
+                    /* Plain Static Content when Watercolor is on (No mask to prevent clutter) */
+                    <div className="flex flex-col items-center justify-center text-center relative z-10 w-full h-full">
+                        <div className="flex items-center gap-2 mb-6">
+                            <span className="text-gray-900 font-medium text-lg">FlowState</span>
+                        </div>
+                        <h1 className="text-6xl md:text-5xl font-bold tracking-tight max-w-5xl text-gray-900 leading-[1.1] mb-6 drop-shadow-sm">
+                            Experience system design like never before<br />with the world’s first AI Architect
+                        </h1>
+                        <p className="text-xl md:text-xl text-gray-700 max-w-2xl leading-relaxed bg-white/40 backdrop-blur-sm px-4 py-2 rounded-2xl border border-white/20">
+                            Talk through your system design, and watch your whiteboard come to life in real-time.
+                        </p>
+                    </div>
+                ) : hoverStyle === "svgMask" ? (
                     <MaskContainer
                         className="w-full !bg-transparent mb-10"
                         revealSize={400}
@@ -163,7 +199,7 @@ export default function Home() {
                 )}
 
                 {/* Primary CTAs */}
-                <div className="flex flex-col sm:flex-row items-center gap-4 relative z-50 pointer-events-auto">
+                <div className="flex flex-col mt-10 sm:flex-row items-center gap-4 relative z-50 pointer-events-auto">
                     <Link href="/library" className="flex items-center gap-2 bg-[#1a1a1a] hover:bg-black text-white px-8 py-3.5 rounded-full font-medium transition-all shadow-md hover:shadow-lg">
                         <Sparkles className="w-5 h-5" />
                         Open FlowState
