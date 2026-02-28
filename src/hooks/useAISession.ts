@@ -67,6 +67,7 @@ export interface AISessionOptions {
     onAddNode?: (node: AddNodePayload) => void;
     onTranscript?: (text: string, role: "model" | "user") => void;
     onStatus?: (s: SessionStatus) => void;
+    libraryItems?: readonly any[];
 }
 
 export interface AISessionHandle {
@@ -88,6 +89,7 @@ export function useAISession({
     onAddNode,
     onTranscript,
     onStatus,
+    libraryItems,
 }: AISessionOptions): AISessionHandle {
 
     const [status, setStatus] = useState<SessionStatus>("idle");
@@ -137,6 +139,27 @@ export function useAISession({
         };
         saveHistory();
     }, [history, workspaceId, user]);
+
+    // ── Library Sync ──────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!libraryItems || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+
+        const getLibraryItemName = (item: any) => {
+            if (item.name) return item.name;
+            const textElement = item.elements?.find((el: any) => el.type === "text");
+            return textElement?.text || "Unnamed Component";
+        };
+
+        const names = libraryItems.map(getLibraryItemName).filter(Boolean);
+        const tag = 0x04; // TAG_LIBRARY
+        const payload = new TextEncoder().encode(JSON.stringify(names));
+        const frame = new Uint8Array(1 + payload.byteLength);
+        frame[0] = tag;
+        frame.set(payload, 1);
+        wsRef.current.send(frame);
+
+        console.log(`[FlowState] 📚 Sent library sync — ${names.length} items`);
+    }, [libraryItems, status]); // status trigger ensures sync when socket opens
 
     const clearHistory = useCallback(async () => {
         setHistory([]);

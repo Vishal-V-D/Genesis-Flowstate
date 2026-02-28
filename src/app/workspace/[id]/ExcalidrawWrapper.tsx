@@ -541,10 +541,26 @@ export default function ExcalidrawWrapper({
         const requestedType = (node.node_type || "").toLowerCase();
         const requestedName = (node.node_name || "").toLowerCase();
 
-        const matchedLibItem = savedLibraryItems.find((item: any) =>
-            (item.name || "").toLowerCase() === requestedType ||
-            (item.name || "").toLowerCase() === requestedName
-        );
+        const getLibraryItemName = (item: any) => {
+            if (item.name) return item.name;
+            const textElement = item.elements?.find((el: any) => el.type === "text");
+            return textElement?.text || "";
+        };
+
+        // 1. Exact match by name
+        let matchedLibItem = savedLibraryItems.find((item: any) => {
+            const itemName = getLibraryItemName(item).toLowerCase();
+            return itemName === requestedType || itemName === requestedName;
+        });
+
+        // 2. Fuzzy/Keyword match if no exact match
+        if (!matchedLibItem) {
+            const keywords = [...requestedType.split(/[\s_-]+/), ...requestedName.split(/[\s_-]+/)].filter(k => k.length > 2);
+            matchedLibItem = savedLibraryItems.find((item: any) => {
+                const itemName = getLibraryItemName(item).toLowerCase();
+                return keywords.some(k => itemName.includes(k));
+            });
+        }
 
         if (matchedLibItem && matchedLibItem.elements) {
             const mapOldToNewId = new Map<string, string>();
@@ -655,6 +671,7 @@ export default function ExcalidrawWrapper({
     const ai = useAISession({
         workspaceId, getCanvasBlob, onAddNode: handleAddNode,
         onTranscript: (text) => setTranscript(text),
+        libraryItems: savedLibraryItems,
     });
 
     useEffect(() => {
@@ -679,8 +696,8 @@ export default function ExcalidrawWrapper({
         const checkTour = async () => {
             try {
                 const docSnap = await getDoc(doc(db, "users", user.uid));
-                const toursSeen = docSnap.data()?.toursSeen || {};
-                if (!toursSeen[workspaceId]) setTimeout(() => setRunTour(true), 1000);
+                const hasSeenTour = docSnap.data()?.hasSeenTour;
+                if (!hasSeenTour) setTimeout(() => setRunTour(true), 1000);
             } catch (e) { console.warn("Failed to check tour status:", e); }
         };
         checkTour();
@@ -692,7 +709,7 @@ export default function ExcalidrawWrapper({
             setRunTour(false);
             if (user) {
                 try {
-                    await setDoc(doc(db, "users", user.uid), { toursSeen: { [workspaceId]: true } }, { merge: true });
+                    await setDoc(doc(db, "users", user.uid), { hasSeenTour: true }, { merge: true });
                 } catch (e) { console.warn("Failed to save tour status:", e); }
             }
         }
