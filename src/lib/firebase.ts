@@ -7,14 +7,13 @@ import { getDatabase } from "firebase/database";
 // Firebase configuration is loaded from environment variables.
 // Copy .env.example → .env.local and fill in your project values.
 const firebaseConfig = {
-    apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-    authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
-    messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
-    appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
-    measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
-    databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL!,
+  apiKey: "AIzaSyCUDwvNgc0oTsuxqWMYMeBmeSIrYyXFXTc",
+  authDomain: "flowstate-312dc.firebaseapp.com",
+  projectId: "flowstate-312dc",
+  storageBucket: "flowstate-312dc.firebasestorage.app",
+  messagingSenderId: "551199643379",
+  appId: "1:551199643379:web:dac2a7c3eb9acbd2874986",
+  measurementId: "G-NEEDC8TK3D"
 };
 
 // Initialize Firebase (guard against hot-reload re-initialization in Next.js)
