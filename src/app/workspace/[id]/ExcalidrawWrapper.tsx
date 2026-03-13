@@ -16,44 +16,213 @@ import { db, rtdb } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
 import InviteModal from "@/components/workspace/InviteModal";
 
-// ── Node colour palette by type ───────────────────────────────────────────────
-const BG: Record<string, string> = {
-    client: "#dbeafe", server: "#dcfce7", database: "#fef9c3",
-    cache: "#fce7f3", queue: "#ede9fe", gateway: "#ffedd5",
-    cdn: "#e0f2fe", loadbalancer: "#f0fdf4", auth: "#fef2f2",
-    storage: "#f5f3ff", microservice: "#ecfdf5", external_api: "#fff7ed",
-    firewall: "#fef2f2", dns: "#e0f2fe",
+// ═══════════════════════════════════════════════════════════════════════════
+// VISUAL DESIGN SYSTEM — rich per-type colours, shapes, strokes, arrows
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface NodeStyle {
+    bg: string;           // fill colour
+    stroke: string;       // border colour
+    strokeWidth: number;  // border thickness
+    strokeStyle: "solid" | "dashed" | "dotted";
+    fillStyle: "solid" | "hachure" | "cross-hatch";
+    shape: "rectangle" | "ellipse" | "diamond";
+    roundness: any;       // null = sharp, {type,value} = rounded
+    labelColor: string;
+    labelSize: number;
+    arrowColor: string;         // arrow FROM this node
+    arrowStyle: "solid" | "dashed" | "dotted";
+    arrowEnd: "arrow" | "triangle" | "dot" | "bar" | "none";
+    arrowStart: "arrow" | "triangle" | "dot" | "bar" | "none";
+    w: number; h: number;       // default size
+}
+
+const NODE_STYLES: Record<string, NodeStyle> = {
+    // ── Flowchart ──────────────────────────────────────────────────────────
+    start_end: {
+        bg: "#d1fae5", stroke: "#059669", strokeWidth: 2.5, strokeStyle: "solid",
+        fillStyle: "solid", shape: "ellipse", roundness: null,
+        labelColor: "#064e3b", labelSize: 14,
+        arrowColor: "#059669", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 160, h: 56,
+    },
+    process: {
+        bg: "#dbeafe", stroke: "#2563eb", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 12 },
+        labelColor: "#1e3a8a", labelSize: 14,
+        arrowColor: "#3b82f6", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    decision: {
+        bg: "#fef9c3", stroke: "#ca8a04", strokeWidth: 2.5, strokeStyle: "solid",
+        fillStyle: "solid", shape: "diamond", roundness: null,
+        labelColor: "#713f12", labelSize: 13,
+        arrowColor: "#d97706", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 110,
+    },
+    io: {
+        bg: "#f3e8ff", stroke: "#7c3aed", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 6 },
+        labelColor: "#4c1d95", labelSize: 14,
+        arrowColor: "#8b5cf6", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    // ── Architecture ───────────────────────────────────────────────────────
+    client: {
+        bg: "#eff6ff", stroke: "#2563eb", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 16 },
+        labelColor: "#1e3a8a", labelSize: 13,
+        arrowColor: "#3b82f6", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    server: {
+        bg: "#f0fdf4", stroke: "#16a34a", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 10 },
+        labelColor: "#14532d", labelSize: 13,
+        arrowColor: "#22c55e", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    database: {
+        bg: "#fefce8", stroke: "#ca8a04", strokeWidth: 2.5, strokeStyle: "solid",
+        fillStyle: "hachure", shape: "ellipse", roundness: null,
+        labelColor: "#713f12", labelSize: 13,
+        arrowColor: "#eab308", arrowStyle: "dashed", arrowEnd: "arrow", arrowStart: "none",
+        w: 170, h: 80,
+    },
+    cache: {
+        bg: "#fdf4ff", stroke: "#a21caf", strokeWidth: 2, strokeStyle: "dashed",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 20 },
+        labelColor: "#701a75", labelSize: 13,
+        arrowColor: "#c026d3", arrowStyle: "dashed", arrowEnd: "dot", arrowStart: "none",
+        w: 180, h: 62,
+    },
+    queue: {
+        bg: "#f5f3ff", stroke: "#6d28d9", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 4 },
+        labelColor: "#3b0764", labelSize: 13,
+        arrowColor: "#7c3aed", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    gateway: {
+        bg: "#fff7ed", stroke: "#ea580c", strokeWidth: 2.5, strokeStyle: "solid",
+        fillStyle: "solid", shape: "diamond", roundness: null,
+        labelColor: "#7c2d12", labelSize: 13,
+        arrowColor: "#f97316", arrowStyle: "solid", arrowEnd: "triangle", arrowStart: "none",
+        w: 180, h: 100,
+    },
+    loadbalancer: {
+        bg: "#ecfdf5", stroke: "#059669", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 8 },
+        labelColor: "#064e3b", labelSize: 13,
+        arrowColor: "#10b981", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 200, h: 66,
+    },
+    cdn: {
+        bg: "#e0f2fe", stroke: "#0284c7", strokeWidth: 2, strokeStyle: "dotted",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 24 },
+        labelColor: "#0c4a6e", labelSize: 13,
+        arrowColor: "#0ea5e9", arrowStyle: "dotted", arrowEnd: "arrow", arrowStart: "none",
+        w: 180, h: 62,
+    },
+    auth: {
+        bg: "#fef2f2", stroke: "#dc2626", strokeWidth: 2.5, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 10 },
+        labelColor: "#7f1d1d", labelSize: 13,
+        arrowColor: "#ef4444", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 180, h: 66,
+    },
+    storage: {
+        bg: "#f5f3ff", stroke: "#7c3aed", strokeWidth: 2, strokeStyle: "dashed",
+        fillStyle: "hachure", shape: "ellipse", roundness: null,
+        labelColor: "#3b0764", labelSize: 13,
+        arrowColor: "#8b5cf6", arrowStyle: "dashed", arrowEnd: "dot", arrowStart: "none",
+        w: 170, h: 76,
+    },
+    microservice: {
+        bg: "#f0fdf4", stroke: "#15803d", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 6 },
+        labelColor: "#14532d", labelSize: 12,
+        arrowColor: "#16a34a", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 180, h: 62,
+    },
+    external_api: {
+        bg: "#fff7ed", stroke: "#c2410c", strokeWidth: 2, strokeStyle: "dashed",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 8 },
+        labelColor: "#7c2d12", labelSize: 13,
+        arrowColor: "#f97316", arrowStyle: "dashed", arrowEnd: "triangle", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    firewall: {
+        bg: "#fef2f2", stroke: "#b91c1c", strokeWidth: 3, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: null,
+        labelColor: "#7f1d1d", labelSize: 13,
+        arrowColor: "#dc2626", arrowStyle: "solid", arrowEnd: "bar", arrowStart: "none",
+        w: 180, h: 62,
+    },
+    dns: {
+        bg: "#e0f2fe", stroke: "#0369a1", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 14 },
+        labelColor: "#0c4a6e", labelSize: 13,
+        arrowColor: "#0284c7", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 170, h: 62,
+    },
+    // ── UML / ER ───────────────────────────────────────────────────────────
+    actor: {
+        bg: "#f0f9ff", stroke: "#0369a1", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "ellipse", roundness: null,
+        labelColor: "#0c4a6e", labelSize: 13,
+        arrowColor: "#0284c7", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+        w: 150, h: 60,
+    },
+    entity: {
+        bg: "#faf5ff", stroke: "#6d28d9", strokeWidth: 2, strokeStyle: "solid",
+        fillStyle: "solid", shape: "rectangle", roundness: null,
+        labelColor: "#3b0764", labelSize: 13,
+        arrowColor: "#7c3aed", arrowStyle: "solid", arrowEnd: "none", arrowStart: "none",
+        w: 190, h: 66,
+    },
+    note: {
+        bg: "#fefce8", stroke: "#a16207", strokeWidth: 1.5, strokeStyle: "dashed",
+        fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 4 },
+        labelColor: "#713f12", labelSize: 12,
+        arrowColor: "#ca8a04", arrowStyle: "dotted", arrowEnd: "none", arrowStart: "none",
+        w: 190, h: 60,
+    },
 };
-const STROKE: Record<string, string> = {
-    client: "#3b82f6", server: "#22c55e", database: "#eab308",
-    cache: "#ec4899", queue: "#8b5cf6", gateway: "#f97316",
-    cdn: "#0ea5e9", loadbalancer: "#16a34a", auth: "#ef4444",
-    storage: "#7c3aed", microservice: "#10b981", external_api: "#f97316",
-    firewall: "#dc2626", dns: "#0284c7",
+
+// Fallback style for unknown types
+const DEFAULT_STYLE: NodeStyle = {
+    bg: "#f1f5f9", stroke: "#475569", strokeWidth: 2, strokeStyle: "solid",
+    fillStyle: "solid", shape: "rectangle", roundness: { type: 3, value: 10 },
+    labelColor: "#0f172a", labelSize: 14,
+    arrowColor: "#64748b", arrowStyle: "solid", arrowEnd: "arrow", arrowStart: "none",
+    w: 190, h: 66,
 };
+
+const getStyle = (type: string): NodeStyle => NODE_STYLES[type] ?? DEFAULT_STYLE;
 
 // ── Distinct vibrant hex color palette mapped deterministically from uid ──────
 const COLLAB_COLORS = [
-    { background: '#FF4B4B', stroke: '#CC0000' }, // vivid red
-    { background: '#FF6D00', stroke: '#C43C00' }, // orange
-    { background: '#FFD600', stroke: '#C8A000' }, // yellow
-    { background: '#00C853', stroke: '#007A2F' }, // green
-    { background: '#00B0FF', stroke: '#0059B2' }, // sky blue
-    { background: '#AA00FF', stroke: '#6200CA' }, // purple
-    { background: '#FF4081', stroke: '#C60055' }, // pink
-    { background: '#00BCD4', stroke: '#006978' }, // teal
-    { background: '#7C4DFF', stroke: '#4615B2' }, // deep violet
-    { background: '#FF6E40', stroke: '#C43D00' }, // deep orange
-    { background: '#1DE9B6', stroke: '#00A07A' }, // mint
-    { background: '#F50057', stroke: '#AB003C' }, // accent red
-    { background: '#AEEA00', stroke: '#6D9100' }, // lime
-    { background: '#00E5FF', stroke: '#00A3B4' }, // cyan
-    { background: '#FF9100', stroke: '#C56200' }, // amber
-    { background: '#E040FB', stroke: '#A100C2' }, // magenta
-    { background: '#69F0AE', stroke: '#1DA462' }, // light green
-    { background: '#40C4FF', stroke: '#0070C0' }, // light blue
-    { background: '#FF80AB', stroke: '#C94B7B' }, // light pink
-    { background: '#B2FF59', stroke: '#6ABF00' }, // light lime
+    { background: '#FF4B4B', stroke: '#CC0000' },
+    { background: '#FF6D00', stroke: '#C43C00' },
+    { background: '#FFD600', stroke: '#C8A000' },
+    { background: '#00C853', stroke: '#007A2F' },
+    { background: '#00B0FF', stroke: '#0059B2' },
+    { background: '#AA00FF', stroke: '#6200CA' },
+    { background: '#FF4081', stroke: '#C60055' },
+    { background: '#00BCD4', stroke: '#006978' },
+    { background: '#7C4DFF', stroke: '#4615B2' },
+    { background: '#FF6E40', stroke: '#C43D00' },
+    { background: '#1DE9B6', stroke: '#00A07A' },
+    { background: '#F50057', stroke: '#AB003C' },
+    { background: '#AEEA00', stroke: '#6D9100' },
+    { background: '#00E5FF', stroke: '#00A3B4' },
+    { background: '#FF9100', stroke: '#C56200' },
+    { background: '#E040FB', stroke: '#A100C2' },
+    { background: '#69F0AE', stroke: '#1DA462' },
+    { background: '#40C4FF', stroke: '#0070C0' },
+    { background: '#FF80AB', stroke: '#C94B7B' },
+    { background: '#B2FF59', stroke: '#6ABF00' },
 ];
 
 function uidToColor(uid: string): { background: string; stroke: string } {
@@ -82,31 +251,20 @@ function VoiceMessage({ url }: { url: string }) {
             audioRef.current = new Audio(url);
             audioRef.current.onended = () => setIsPlaying(false);
         }
-        if (isPlaying) {
-            audioRef.current.pause();
-            setIsPlaying(false);
-        } else {
-            audioRef.current.play();
-            setIsPlaying(true);
-        }
+        if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+        else { audioRef.current.play(); setIsPlaying(true); }
     };
 
     return (
         <div className="mt-3 flex items-center gap-3 bg-white/40 backdrop-blur-sm rounded-xl p-2.5 border border-blue-200/50 shadow-sm transition-all hover:bg-white/60">
-            <button
-                onClick={toggle}
-                className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all shadow-sm active:scale-95"
-            >
+            <button onClick={toggle} className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all shadow-sm active:scale-95">
                 {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
             </button>
             <div className="flex-1 flex flex-col gap-1.5">
                 <div className="flex items-end gap-[2px] h-4">
                     {[...Array(16)].map((_, i) => (
-                        <div
-                            key={i}
-                            className={`w-1 rounded-full transition-all duration-300 ${isPlaying ? 'bg-blue-500 animate-pulse' : 'bg-blue-300'}`}
-                            style={{ height: `${30 + (Math.sin(i * 0.8) * 30 + 30)}%`, animationDelay: `${i * 0.05}s` }}
-                        />
+                        <div key={i} className={`w-1 rounded-full transition-all duration-300 ${isPlaying ? 'bg-blue-500 animate-pulse' : 'bg-blue-300'}`}
+                            style={{ height: `${30 + (Math.sin(i * 0.8) * 30 + 30)}%`, animationDelay: `${i * 0.05}s` }} />
                     ))}
                 </div>
                 <div className="flex justify-between items-center px-0.5">
@@ -169,15 +327,9 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
                         <div key={i} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                             <div className="flex items-center gap-1.5 mb-1 px-1">
                                 {msg.role === 'user' ? (
-                                    <>
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">You</span>
-                                        <User size={10} className="text-gray-400" />
-                                    </>
+                                    <><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">You</span><User size={10} className="text-gray-400" /></>
                                 ) : (
-                                    <>
-                                        <Bot size={10} className="text-blue-500" />
-                                        <span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Gemini</span>
-                                    </>
+                                    <><Bot size={10} className="text-blue-500" /><span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Gemini</span></>
                                 )}
                             </div>
                             <div style={{
@@ -197,29 +349,19 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
 
             <div className="p-4 border-t border-black/5 bg-white/40">
                 <div className="relative flex items-center">
-                    <input
-                        type="text"
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
+                    <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                         placeholder="Type a message to Gemini..."
-                        className="w-full bg-black/5 border-none rounded-xl py-2.5 pl-4 pr-12 text-sm focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400"
-                    />
-                    <button
-                        onClick={handleSend}
-                        disabled={!input.trim()}
-                        className="absolute right-1.5 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:hover:bg-blue-500 transition-all"
-                    >
+                        className="w-full bg-black/5 border-none rounded-xl py-2.5 pl-4 pr-12 text-sm focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" />
+                    <button onClick={handleSend} disabled={!input.trim()}
+                        className="absolute right-1.5 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:hover:bg-blue-500 transition-all">
                         <Send size={16} />
                     </button>
                 </div>
             </div>
 
             <style jsx>{`
-                @keyframes slideIn {
-                    from { transform: translateX(20px); opacity: 0; }
-                    to { transform: translateX(0); opacity: 1; }
-                }
+                @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
                 .custom-scrollbar::-webkit-scrollbar { width: 4px; }
                 .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
                 .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.05); border-radius: 10px; }
@@ -233,58 +375,41 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
 function CollaboratorStack({ collaborators, currentUid }: { collaborators: any[]; currentUid: string | undefined }) {
     const [showPopup, setShowPopup] = React.useState(false);
     const others = collaborators.filter(c => c.id !== currentUid);
-
     if (others.length === 0) return null;
-
     const visible = others.slice(0, 4);
     const overflow = others.length - 4;
 
     return (
         <div className="relative flex items-center">
-            <button
-                onClick={() => setShowPopup(v => !v)}
-                className="flex -space-x-2 items-center focus:outline-none"
-                title="Active collaborators"
-            >
+            <button onClick={() => setShowPopup(v => !v)} className="flex -space-x-2 items-center focus:outline-none" title="Active collaborators">
                 {visible.map((collab) => (
-                    <div
-                        key={collab.id}
+                    <div key={collab.id}
                         className="w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-[11px] font-bold text-white shadow-md ring-1 ring-black/5 transition-transform hover:scale-110 hover:z-10 relative"
                         style={{ backgroundColor: collab.color?.background || uidToColor(collab.id || '').background }}
-                        title={collab.username}
-                    >
+                        title={collab.username}>
                         {(collab.username || '?').charAt(0).toUpperCase()}
                     </div>
                 ))}
                 {overflow > 0 && (
-                    <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500 shadow-md ring-1 ring-black/5">
-                        +{overflow}
-                    </div>
+                    <div className="w-8 h-8 rounded-full border-2 border-white bg-gray-200 flex items-center justify-center text-[10px] font-bold text-gray-500 shadow-md ring-1 ring-black/5">+{overflow}</div>
                 )}
             </button>
-
             {showPopup && (
                 <>
                     <div className="fixed inset-0 z-[1199]" onClick={() => setShowPopup(false)} />
-                    <div
-                        className="absolute top-full right-0 mt-2 z-[1200] bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden min-w-[200px]"
-                        style={{ animation: "popIn 0.15s ease-out" }}
-                    >
+                    <div className="absolute top-full right-0 mt-2 z-[1200] bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden min-w-[200px]"
+                        style={{ animation: "popIn 0.15s ease-out" }}>
                         <div className="px-4 py-3 border-b border-gray-50">
                             <div className="flex items-center gap-2">
                                 <Users size={13} className="text-gray-400" />
-                                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">
-                                    {others.length} Active Now
-                                </span>
+                                <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{others.length} Active Now</span>
                             </div>
                         </div>
                         <div className="p-2 space-y-0.5 max-h-[200px] overflow-y-auto">
                             {others.map(collab => (
                                 <div key={collab.id} className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-gray-50 transition-colors">
-                                    <div
-                                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm flex-shrink-0"
-                                        style={{ backgroundColor: collab.color?.background || uidToColor(collab.id || '').background }}
-                                    >
+                                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm flex-shrink-0"
+                                        style={{ backgroundColor: collab.color?.background || uidToColor(collab.id || '').background }}>
                                         {(collab.username || '?').charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex flex-col min-w-0">
@@ -299,10 +424,7 @@ function CollaboratorStack({ collaborators, currentUid }: { collaborators: any[]
                 </>
             )}
             <style jsx>{`
-                @keyframes popIn {
-                    from { transform: scale(0.92) translateY(-4px); opacity: 0; }
-                    to { transform: scale(1) translateY(0); opacity: 1; }
-                }
+                @keyframes popIn { from { transform: scale(0.92) translateY(-4px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
             `}</style>
         </div>
     );
@@ -311,22 +433,14 @@ function CollaboratorStack({ collaborators, currentUid }: { collaborators: any[]
 // ── Floating AI status badge ──────────────────────────────────────────────────
 function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionStatus; transcript: string; isMuted: boolean; toggleMute: () => void }) {
     const labels: Record<SessionStatus, string> = {
-        idle: "AI Offline",
-        requesting_permissions: "Requesting permissions…",
-        connecting: "Connecting to FlowState AI…",
-        ai_ready: "Listening",
-        ai_done: "Speaking",
-        error: "Connection error",
-        stopped: "AI Disconnected",
+        idle: "AI Offline", requesting_permissions: "Requesting permissions…",
+        connecting: "Connecting to FlowState AI…", ai_ready: "Listening",
+        ai_done: "Speaking", error: "Connection error", stopped: "AI Disconnected",
     };
     const colors: Record<SessionStatus, string> = {
-        idle: "bg-gray-100 text-gray-500",
-        requesting_permissions: "bg-yellow-50 text-yellow-600",
-        connecting: "bg-blue-50 text-blue-600",
-        ai_ready: "bg-white text-gray-700",
-        ai_done: "bg-white text-gray-700",
-        error: "bg-red-50 text-red-600",
-        stopped: "bg-gray-100 text-gray-500",
+        idle: "bg-gray-100 text-gray-500", requesting_permissions: "bg-yellow-50 text-yellow-600",
+        connecting: "bg-blue-50 text-blue-600", ai_ready: "bg-white text-gray-700",
+        ai_done: "bg-white text-gray-700", error: "bg-red-50 text-red-600", stopped: "bg-gray-100 text-gray-500",
     };
     const isListening = status === "ai_ready" || status === "ai_done";
     const googleColors = ['#4285F4', '#EA4335', '#FBBC05', '#34A853', '#4285F4'];
@@ -334,16 +448,8 @@ function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionS
     const renderVisualizer = () => (
         <div className="flex items-center justify-center gap-[3px] h-4 mx-1">
             {googleColors.map((color, i) => (
-                <div
-                    key={i}
-                    className="w-[3px] rounded-full"
-                    style={{
-                        backgroundColor: color,
-                        animation: `audioPulse 0.4s ease-in-out infinite alternate`,
-                        animationDelay: `${[0, 0.2, 0.4, 0.2, 0][i]}s`,
-                        height: '6px'
-                    }}
-                />
+                <div key={i} className="w-[3px] rounded-full"
+                    style={{ backgroundColor: color, animation: `audioPulse 0.4s ease-in-out infinite alternate`, animationDelay: `${[0, 0.2, 0.4, 0.2, 0][i]}s`, height: '6px' }} />
             ))}
         </div>
     );
@@ -351,40 +457,22 @@ function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionS
     return (
         <div style={{ position: "fixed", bottom: "1.5rem", left: "50%", transform: "translateX(-50%)", zIndex: 1000, display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5rem", pointerEvents: "none" }}>
             <style jsx>{`
-                @keyframes audioPulse {
-                    0% { height: 6px; opacity: 0.7; }
-                    100% { height: 16px; opacity: 1; }
-                }
+                @keyframes audioPulse { 0% { height: 6px; opacity: 0.7; } 100% { height: 16px; opacity: 1; } }
             `}</style>
-
-            {transcript && (
-                <div style={{ background: "rgba(255,255,255,0.94)", backdropFilter: "blur(14px)", borderRadius: "1rem", padding: "0.5rem 1.25rem", maxWidth: "32rem", fontSize: "0.8125rem", color: "#374151", boxShadow: "0 4px 24px rgba(0,0,0,0.1)", border: "1px solid rgba(0,0,0,0.06)", textAlign: "center", transition: "all 0.3s ease" }}>
-                    {transcript}
-                </div>
-            )}
-
+            {/* Transcript is shown in sidebar chat only — not on canvas */}
             <div className="flex items-center gap-2 pointer-events-auto">
-                <div
-                    id="tour-ai-badge"
+                <div id="tour-ai-badge"
                     className={`flex items-center gap-1.5 px-5 py-2 rounded-full text-xs font-medium transition-all duration-300 ${colors[status]}`}
-                    style={{ border: "1px solid rgba(0,0,0,0.06)", backdropFilter: "blur(8px)", minWidth: isListening ? "160px" : "auto", justifyContent: "center" }}
-                >
+                    style={{ border: "1px solid rgba(0,0,0,0.06)", backdropFilter: "blur(8px)", minWidth: isListening ? "160px" : "auto", justifyContent: "center" }}>
                     {(status === "connecting" || status === "requesting_permissions") && <Loader2 className="w-3 h-3 animate-spin" />}
                     {isListening && renderVisualizer()}
                     <span className={isListening ? "tracking-widest uppercase text-[11px] font-bold mx-2" : ""}>{labels[status]}</span>
                     {isListening && renderVisualizer()}
                 </div>
-
                 {(status === "ai_ready" || status === "ai_done") && (
-                    <button
-                        id="tour-mute-button"
-                        onClick={toggleMute}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border ${isMuted
-                            ? 'bg-red-50/95 text-red-600 border-red-200 hover:bg-red-100'
-                            : 'bg-white/95 text-gray-700 border-black/5 hover:bg-gray-50'}`}
-                        style={{ backdropFilter: "blur(8px)" }}
-                        title={isMuted ? "Unmute AI Session" : "Mute AI Session"}
-                    >
+                    <button id="tour-mute-button" onClick={toggleMute}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border ${isMuted ? 'bg-red-50/95 text-red-600 border-red-200 hover:bg-red-100' : 'bg-white/95 text-gray-700 border-black/5 hover:bg-gray-50'}`}
+                        style={{ backdropFilter: "blur(8px)" }} title={isMuted ? "Unmute AI Session" : "Mute AI Session"}>
                         {isMuted ? <MicOff size={14} strokeWidth={2.5} /> : <Mic size={14} strokeWidth={2.5} />}
                         <span className="uppercase tracking-widest text-[10px] pr-1">{isMuted ? "Unmute" : "Mute"}</span>
                     </button>
@@ -395,22 +483,11 @@ function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionS
 }
 
 // ── Selection Name Labels Overlay ─────────────────────────────────────────────
-// Shows a floating name chip above whatever a remote collaborator has selected,
-// tracking the canvas viewport in real-time via requestAnimationFrame.
-function SelectionNameLabels({
-    collaborators,
-    excalidrawRef,
-    currentUid,
-}: {
-    collaborators: any[];
-    excalidrawRef: React.MutableRefObject<any>;
-    currentUid?: string;
-}) {
+function SelectionNameLabels({ collaborators, excalidrawRef, currentUid }: { collaborators: any[]; excalidrawRef: React.MutableRefObject<any>; currentUid?: string; }) {
     type Label = { uid: string; name: string; bgColor: string; x: number; y: number };
     const [labels, setLabels] = React.useState<Label[]>([]);
     const rafRef = React.useRef<number | null>(null);
 
-    // Collaborators who have something selected (excluding self)
     const activeSelectors = collaborators.filter(c => {
         if (c.id === currentUid) return false;
         const ids = c.selectedElementIds || {};
@@ -420,80 +497,42 @@ function SelectionNameLabels({
     React.useEffect(() => {
         const compute = () => {
             const api = excalidrawRef.current;
-            if (!api || activeSelectors.length === 0) {
-                setLabels([]);
-                return;
-            }
-
+            if (!api || activeSelectors.length === 0) { setLabels([]); return; }
             const elements = api.getSceneElements();
             const appState = api.getAppState();
             const { scrollX, scrollY, zoom } = appState;
             const z = zoom?.value ?? 1;
-
             const next: Label[] = [];
             for (const collab of activeSelectors) {
-                const selectedIds = Object.keys(collab.selectedElementIds || {}).filter(
-                    id => collab.selectedElementIds[id]
-                );
+                const selectedIds = Object.keys(collab.selectedElementIds || {}).filter(id => collab.selectedElementIds[id]);
                 if (!selectedIds.length) continue;
-
                 const selected = elements.filter((el: any) => selectedIds.includes(el.id));
                 if (!selected.length) continue;
-
-                // Bounding box in scene space
                 const minX = Math.min(...selected.map((e: any) => e.x));
                 const minY = Math.min(...selected.map((e: any) => e.y));
                 const maxX = Math.max(...selected.map((e: any) => e.x + (e.width ?? 0)));
-
-                // Convert to screen coords
                 const screenX = minX * z + scrollX;
                 const screenY = minY * z + scrollY;
                 const screenW = (maxX - minX) * z;
-
-                next.push({
-                    uid: collab.id,
-                    name: collab.username || 'Anonymous',
-                    bgColor: collab.color?.background || '#3b82f6',
-                    x: screenX + screenW / 2, // center horizontally over selection
-                    y: screenY + 1,           // stick to the top border of the selection
-                });
+                next.push({ uid: collab.id, name: collab.username || 'Anonymous', bgColor: collab.color?.background || '#3b82f6', x: screenX + screenW / 2, y: screenY + 1 });
             }
             setLabels(next);
             rafRef.current = requestAnimationFrame(compute);
         };
-
         rafRef.current = requestAnimationFrame(compute);
         return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-    }, [activeSelectors, excalidrawRef]); // re-runs when active selectors change
+    }, [activeSelectors, excalidrawRef]);
 
     if (labels.length === 0) return null;
-
     return (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 200, overflow: 'hidden' }}>
             {labels.map(label => (
-                <div
-                    key={label.uid}
-                    style={{
-                        position: 'absolute',
-                        left: label.x,
-                        top: label.y,
-                        transform: 'translate(-50%, -100%)',
-                        backgroundColor: label.bgColor,
-                        color: '#fff',
-                        padding: '2px 8px 3px',
-                        borderRadius: '6px',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        fontFamily: 'Inter, system-ui, sans-serif',
-                        whiteSpace: 'nowrap',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.25)',
-                        letterSpacing: '0.01em',
-                        // small triangle pointer below the label
-                        borderBottom: `3px solid ${label.bgColor}`,
-                    }}
-                >
-                    {label.name}
-                </div>
+                <div key={label.uid} style={{
+                    position: 'absolute', left: label.x, top: label.y, transform: 'translate(-50%, -100%)',
+                    backgroundColor: label.bgColor, color: '#fff', padding: '2px 8px 3px', borderRadius: '6px',
+                    fontSize: '11px', fontWeight: 700, fontFamily: 'Inter, system-ui, sans-serif', whiteSpace: 'nowrap',
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.25)', letterSpacing: '0.01em', borderBottom: `3px solid ${label.bgColor}`,
+                }}>{label.name}</div>
             ))}
         </div>
     );
@@ -501,16 +540,8 @@ function SelectionNameLabels({
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ExcalidrawWrapper({
-    excalidrawRef,
-    savedLibraryItems,
-    initialElements,
-    initialAppState,
-    onLibraryChange,
-    onBack,
-    workspaceId,
-    workspaceTitle,
-    isOwner = false,
-    canEdit = true,
+    excalidrawRef, savedLibraryItems, initialElements, initialAppState,
+    onLibraryChange, onBack, workspaceId, workspaceTitle, isOwner = false, canEdit = true,
 }: {
     excalidrawRef: React.MutableRefObject<ExcalidrawImperativeAPI | null>;
     savedLibraryItems: LibraryItems;
@@ -531,126 +562,325 @@ export default function ExcalidrawWrapper({
     const [workspaceShareMode, setWorkspaceShareMode] = React.useState<'editor' | 'viewer'>('editor');
     const [activeCollaborators, setActiveCollaborators] = React.useState<any[]>([]);
 
-    const handleAddNode = useCallback((node: AddNodePayload) => {
+    // ═══════════════════════════════════════════════════════════════════════════
+    // DRAW ENGINE — persistent registry, queued draws, no canvas jumping
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // node_name → excalidraw shape element id
+    const nodeIdRegistry = useRef<Map<string, string>>(new Map());
+    // names already on canvas — dedup guard, never reset mid-session
+    const drawnNamesRef  = useRef<Set<string>>(new Set());
+    // pending nodes waiting to be drawn one at a time
+    const drawQueueRef   = useRef<AddNodePayload[]>([]);
+    // lock — prevents concurrent draws
+    const isDrawingRef   = useRef(false);
+    // accumulated elements built during this draw batch — written atomically
+    const batchEls       = useRef<any[]>([]);
+
+    // ── On reconnect: scan canvas and pre-fill registry so we never redraw ───
+    const rebuildRegistryFromCanvas = useCallback(() => {
+        const api = excalidrawRef.current;
+        if (!api) return;
+        const els = api.getSceneElements() as any[];
+
+        // convertToExcalidrawElements produces bound text elements with containerId
+        // Shapes also have a label property in the source spec but get split into
+        // shape + bound text in the scene. We scan both patterns.
+        els.forEach((el) => {
+            if (el.type === "text" && el.containerId && el.text) {
+                const name = el.text.trim();
+                nodeIdRegistry.current.set(name, el.containerId);
+                drawnNamesRef.current.add(name);
+            }
+        });
+
+        // Seed batchEls with whatever is already on canvas
+        batchEls.current = [...els];
+        console.log("[FlowState] Registry rebuilt:", drawnNamesRef.current.size, "nodes");
+    }, [excalidrawRef]);
+
+    // ── Track which element IDs belong to the current draw batch ─────────────
+    // When a new diagram starts (root node with no parent), we reset this set.
+    // After all nodes drawn, we fit the view to only the current diagram.
+    const currentDiagramIdsRef = useRef<Set<string>>(new Set());
+
+    // ── Core draw — rich per-type styles via NODE_STYLES design system ──────────
+    const _drawNodeNow = useCallback((node: AddNodePayload) => {
         const api = excalidrawRef.current;
         if (!api) return;
 
-        const currentElements = api.getSceneElements();
+        const name = (node.node_name || "Node").trim();
+        const type = (node.node_type || "process").toLowerCase();
+        const S    = getStyle(type);
 
-        let srcElements: any[] = [];
-        const requestedType = (node.node_type || "").toLowerCase();
-        const requestedName = (node.node_name || "").toLowerCase();
-
-        const getLibraryItemName = (item: any) => {
-            if (item.name) return item.name;
-            const textElement = item.elements?.find((el: any) => el.type === "text");
-            return textElement?.text || "";
-        };
-
-        // 1. Exact match by name
-        let matchedLibItem = savedLibraryItems.find((item: any) => {
-            const itemName = getLibraryItemName(item).toLowerCase();
-            return itemName === requestedType || itemName === requestedName;
-        });
-
-        // 2. Fuzzy/Keyword match if no exact match
-        if (!matchedLibItem) {
-            const keywords = [...requestedType.split(/[\s_-]+/), ...requestedName.split(/[\s_-]+/)].filter(k => k.length > 2);
-            matchedLibItem = savedLibraryItems.find((item: any) => {
-                const itemName = getLibraryItemName(item).toLowerCase();
-                return keywords.some(k => itemName.includes(k));
-            });
+        if (drawnNamesRef.current.has(name)) {
+            console.log(`[FlowState] ⏭ Skip dup "${name}"`);
+            return;
         }
 
-        if (matchedLibItem && matchedLibItem.elements) {
-            const mapOldToNewId = new Map<string, string>();
-            const getNewId = (oldId: string) => {
-                if (!mapOldToNewId.has(oldId)) mapOldToNewId.set(oldId, crypto.randomUUID());
-                return mapOldToNewId.get(oldId)!;
-            };
+        const { w, h } = S;
 
-            srcElements = matchedLibItem.elements.map((el: any) => {
-                const newEl = { ...el, id: getNewId(el.id) };
-                if (newEl.groupIds && Array.isArray(newEl.groupIds)) newEl.groupIds = newEl.groupIds.map(getNewId);
-                if (newEl.boundElements && Array.isArray(newEl.boundElements)) newEl.boundElements = newEl.boundElements.map((be: any) => ({ ...be, id: getNewId(be.id) }));
-                return newEl;
-            });
-        } else {
-            srcElements = convertToExcalidrawElements([{
-                type: "rectangle",
-                x: 0, y: 0, width: 200, height: 80,
-                backgroundColor: BG[node.node_type] ?? "#f3f4f6",
-                strokeColor: STROKE[node.node_type] ?? "#6b7280",
-                strokeWidth: 2, roughness: 0, roundness: { type: 3 },
-                label: { text: node.node_name, fontSize: 14, fontFamily: 2 },
-            } as any]);
-        }
+        // ── Spacing: generous gaps so shapes never overlap ────────────────────
+        // Vertical: max child height + 80px breathing room
+        // Horizontal: max sibling width + 120px breathing room
+        const GAP_V = 100;   // px between bottom of parent and top of child
+        const GAP_H = 160;   // px between right of parent and left of sibling
 
-        const getBBox = (els: readonly any[]) => {
-            if (!els.length) return { minX: 0, minY: 0, maxX: 0, maxY: 0, w: 0, h: 0 };
-            const minX = Math.min(...els.map(e => e.x));
-            const minY = Math.min(...els.map(e => e.y));
-            const maxX = Math.max(...els.map(e => e.x + (e.width || 0)));
-            const maxY = Math.max(...els.map(e => e.y + (e.height || 0)));
-            return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
-        };
-
-        const srcBBox = getBBox(srcElements);
-        const SPACING = 150;
-        let startX = 50, startY = 50;
-        let targetBBox: ReturnType<typeof getBBox> | null = null;
-        let targetNodeId: string | null = null;
+        // ── Find parent shape in batchEls ─────────────────────────────────────
+        // IMPORTANT: after convertToExcalidrawElements the returned shape element
+        // has the SAME id we passed in. Text bound elements have a different id.
+        // So nodeIdRegistry maps node_name → shape element id reliably.
+        let px = 300, py = 60;
+        let parentElId: string | null = null;
+        let pX = 0, pY = 0, pW = 0, pH = 0, pCX = 0, pCY = 0;
 
         if (node.connected_to) {
-            const connectNameLower = node.connected_to.toLowerCase();
-            const targetTextEl: any = currentElements.find(e => e.type === "text" && (e as any).text.toLowerCase().includes(connectNameLower));
-            if (targetTextEl) {
-                targetNodeId = targetTextEl.containerId || targetTextEl.id;
-                let targetEls: any[] = [targetTextEl];
-                if (targetTextEl.containerId) {
-                    const container = currentElements.find(e => e.id === targetTextEl.containerId);
-                    if (container) targetEls.push(container);
-                } else if (targetTextEl.groupIds?.length > 0) {
-                    const gId = targetTextEl.groupIds[0];
-                    targetEls = currentElements.filter(e => e.groupIds?.includes(gId)) as any[];
+            const connName = node.connected_to.trim();
+            const regId    = nodeIdRegistry.current.get(connName);
+
+            // Primary lookup: registry id → shape element
+            let parentEl: any = regId
+                ? batchEls.current.find((e: any) => e.id === regId && e.type !== "arrow" && e.type !== "text")
+                : null;
+
+            // Fallback: search bound text elements by label content
+            if (!parentEl) {
+                const lower  = connName.toLowerCase();
+                const textEl = batchEls.current.find(
+                    (e: any) => e.type === "text" && e.containerId &&
+                    (e.text ?? "").toLowerCase().trim() === lower
+                );
+                if (textEl?.containerId) {
+                    parentEl = batchEls.current.find(
+                        (e: any) => e.id === textEl.containerId && e.type !== "arrow"
+                    );
                 }
-                targetBBox = getBBox(targetEls);
-                const placement = (node.placement || "right").toLowerCase();
-                if (placement === "right") { startX = targetBBox.maxX + SPACING; startY = targetBBox.minY + (targetBBox.h / 2) - (srcBBox.h / 2); }
-                else if (placement === "left") { startX = targetBBox.minX - srcBBox.w - SPACING; startY = targetBBox.minY + (targetBBox.h / 2) - (srcBBox.h / 2); }
-                else if (placement === "top") { startX = targetBBox.minX + (targetBBox.w / 2) - (srcBBox.w / 2); startY = targetBBox.minY - srcBBox.h - SPACING; }
-                else if (placement === "bottom") { startX = targetBBox.minX + (targetBBox.w / 2) - (srcBBox.w / 2); startY = targetBBox.maxY + SPACING; }
+            }
+
+            if (parentEl) {
+                parentElId = parentEl.id;
+                // Use actual rendered dimensions from the element
+                pX  = parentEl.x      ?? 0;
+                pY  = parentEl.y      ?? 0;
+                pW  = parentEl.width  ?? w;
+                pH  = parentEl.height ?? h;
+                pCX = pX + pW / 2;
+                pCY = pY + pH / 2;
+
+                const dir = (node.placement || "bottom").toLowerCase();
+                if      (dir === "bottom") { px = pCX - w / 2;       py = pY + pH + GAP_V; }
+                else if (dir === "top")    { px = pCX - w / 2;       py = pY - h  - GAP_V; }
+                else if (dir === "right")  { px = pX + pW + GAP_H;   py = pCY - h / 2;     }
+                else  /* left */           { px = pX  - w  - GAP_H;  py = pCY - h / 2;     }
+            } else {
+                console.warn(`[FlowState] ⚠️ parent "${connName}" not found — placing at default`);
             }
         }
 
-        if (!targetBBox) {
-            const allBBox = getBBox(currentElements);
-            if (allBBox.w > 0 || allBBox.h > 0) { startX = allBBox.minX; startY = allBBox.maxY + SPACING; }
-        }
+        // No parent (root node of a new diagram) →
+        // Place it to the RIGHT of all existing content with a clear margin.
+        // This ensures each new diagram starts in its own fresh column,
+        // never drawing on top of or tangled with a previous diagram.
+        if (!parentElId && !node.connected_to) {
+            // NEW DIAGRAM STARTING — reset the current diagram ID tracker
+            currentDiagramIdsRef.current = new Set();
 
-        const dx = startX - srcBBox.minX, dy = startY - srcBBox.minY;
-        const newEls = srcElements.map(e => ({ ...e, x: e.x + dx, y: e.y + dy }));
-        const additions = [...currentElements, ...newEls];
-
-        if (targetNodeId && targetBBox) {
-            const newBindableEl = newEls.find(e => ["rectangle", "diamond", "ellipse", "image"].includes(e.type)) || newEls[0];
-            const targetBindableEl = currentElements.find(e => e.id === targetNodeId);
-            if (newBindableEl && targetBindableEl) {
-                const arrowEls = convertToExcalidrawElements([{
-                    type: "arrow",
-                    x: targetBBox.minX + targetBBox.w / 2, y: targetBBox.minY + targetBBox.h / 2,
-                    width: Math.abs(startX - targetBBox.maxX), height: Math.abs(startY - targetBBox.maxY),
-                    points: [[0, 0], [startX - (targetBBox.minX + targetBBox.w / 2), startY - (targetBBox.minY + targetBBox.h / 2)]],
-                    strokeColor: "#9ca3af", strokeWidth: 2, roughness: 0,
-                    startBinding: { elementId: targetBindableEl.id, focus: 0, gap: 10 },
-                    endBinding: { elementId: newBindableEl.id, focus: 0, gap: 10 },
-                } as any]);
-                additions.push(...arrowEls);
+            const shapes = batchEls.current.filter(
+                (e: any) => e.type !== "arrow" && e.type !== "text" && !e.isDeleted
+            );
+            if (shapes.length > 0) {
+                // Find the rightmost edge of ALL existing shapes
+                const maxX = Math.max(...shapes.map((e: any) => (e.x ?? 0) + (e.width ?? 0)));
+                // Find the vertical midpoint of existing content to centre the new diagram
+                const minY = Math.min(...shapes.map((e: any) => e.y ?? 0));
+                const maxY = Math.max(...shapes.map((e: any) => (e.y ?? 0) + (e.height ?? 0)));
+                const midY = (minY + maxY) / 2;
+                // Start new diagram 300px to the right — clear visual separation
+                px = maxX + 300;
+                py = midY - h / 2;
+            } else {
+                // Very first node ever — place at a comfortable starting position
+                px = 300;
+                py = 200;
             }
         }
 
-        api.updateScene({ elements: additions });
-    }, [excalidrawRef, savedLibraryItems]);
+        // Round to nearest pixel to avoid sub-pixel blurriness
+        px = Math.round(px);
+        py = Math.round(py);
+
+        // ── Build shape via convertToExcalidrawElements ───────────────────────
+        // We pass our own nodeId so the registry stays consistent.
+        // convertToExcalidrawElements preserves the id on the shape element.
+        const nodeId = crypto.randomUUID();
+
+        const converted = convertToExcalidrawElements([{
+            type:            S.shape as any,
+            id:              nodeId,
+            x: px, y: py,
+            width: w, height: h,
+            strokeColor:     S.stroke,
+            backgroundColor: S.bg,
+            fillStyle:       S.fillStyle as any,
+            strokeWidth:     S.strokeWidth,
+            strokeStyle:     S.strokeStyle as any,
+            roughness:       0,
+            roundness:       S.roundness,
+            label: {
+                text:          name,
+                fontSize:      S.labelSize,
+                fontFamily:    2,
+                textAlign:     "center"  as const,
+                verticalAlign: "middle"  as const,
+                strokeColor:   S.labelColor,
+            },
+        }]);
+
+        // Register BEFORE pushing so arrow lookup works immediately
+        nodeIdRegistry.current.set(name, nodeId);
+        drawnNamesRef.current.add(name);
+        batchEls.current.push(...converted);
+        // Track this node as part of the current diagram
+        currentDiagramIdsRef.current.add(nodeId);
+
+        // ── Arrow — use Excalidraw binding, not manual coordinates ────────────
+        // We let Excalidraw compute the exact edge-midpoint by using
+        // startBinding + endBinding. The arrow x/y/points just need to be
+        // roughly correct — Excalidraw snaps them to the shape edges.
+        if (parentElId) {
+            const dir = (node.placement || "bottom").toLowerCase();
+
+            // Midpoints of the relevant edges for start and end
+            let sx: number, sy: number, ex: number, ey: number;
+            if (dir === "bottom") {
+                sx = pCX;           sy = pY + pH;      // bottom-center of parent
+                ex = px + w / 2;    ey = py;           // top-center of child
+            } else if (dir === "top") {
+                sx = pCX;           sy = pY;           // top-center of parent
+                ex = px + w / 2;    ey = py + h;       // bottom-center of child
+            } else if (dir === "right") {
+                sx = pX + pW;       sy = pCY;          // right-center of parent
+                ex = px;            ey = py + h / 2;   // left-center of child
+            } else {
+                sx = pX;            sy = pCY;          // left-center of parent
+                ex = px + w;        ey = py + h / 2;   // right-center of child
+            }
+
+            const edgeLabel  = ((node as any).edge_label || "").trim();
+            const arrowColor = S.arrowColor;
+            const arrowStyle = S.arrowStyle;
+            const arrowEnd   = S.arrowEnd   as any;
+            const arrowStart = S.arrowStart as any;
+
+            const arrowConverted = convertToExcalidrawElements([{
+                type:        "arrow" as const,
+                id:          crypto.randomUUID(),
+                // Place arrow at start point; points are relative offsets
+                x: sx, y: sy,
+                width:  ex - sx,
+                height: ey - sy,
+                points: [[0, 0], [ex - sx, ey - sy]] as any,
+                strokeColor:    arrowColor,
+                strokeWidth:    2,
+                strokeStyle:    arrowStyle as any,
+                roughness:      0,
+                // Binding tells Excalidraw to snap arrow ends to shape edges
+                startBinding:   { elementId: parentElId, focus: 0, gap: 6 },
+                endBinding:     { elementId: nodeId,     focus: 0, gap: 6 },
+                startArrowhead: arrowStart === "none" ? null : arrowStart,
+                endArrowhead:   arrowEnd   === "none" ? null : arrowEnd,
+                ...(edgeLabel ? {
+                    label: {
+                        text:        edgeLabel,
+                        fontSize:    11,
+                        fontFamily:  2,
+                        strokeColor: arrowColor,
+                    }
+                } : {}),
+            }]);
+            batchEls.current.push(...arrowConverted);
+            // Track arrow as part of current diagram too
+            arrowConverted.forEach((el: any) => currentDiagramIdsRef.current.add(el.id));
+        }
+
+        api.updateScene({ elements: [...batchEls.current] });
+        console.log(`[FlowState] ✅ "${name}" (${type}) @ (${px},${py}) parent=${node.connected_to || "none"}`);
+    }, [excalidrawRef]);
+
+    // ── Draw queue ─────────────────────────────────────────────────────────────
+    // Strictly one node at a time. No scroll during drawing.
+    // After ALL nodes drawn: single smooth fitToContent.
+    const drainDrawQueue = useCallback(() => {
+        if (isDrawingRef.current) return;
+        if (drawQueueRef.current.length === 0) return;
+
+        isDrawingRef.current = true;
+        const next = drawQueueRef.current.shift()!;
+        _drawNodeNow(next);
+
+        setTimeout(() => {
+            isDrawingRef.current = false;
+            if (drawQueueRef.current.length > 0) {
+                drainDrawQueue(); // draw next node — NO scroll until all done
+            } else {
+                // All nodes drawn — fit to current diagram only (not all old diagrams)
+                setTimeout(() => {
+                    try {
+                        const api = excalidrawRef.current;
+                        if (!api) return;
+                        const allEls = api.getSceneElements().filter((e: any) => !e.isDeleted);
+                        // Prefer to fit only the newly drawn diagram
+                        const diagramIds = currentDiagramIdsRef.current;
+                        const diagramEls = diagramIds.size > 0
+                            ? allEls.filter((e: any) => diagramIds.has(e.id))
+                            : allEls;
+                        const targetEls = diagramEls.length > 0 ? diagramEls : allEls;
+                        if (targetEls.length > 0) {
+                            api.scrollToContent(targetEls as any, { animate: true, fitToContent: true });
+                        }
+                    } catch (_) {}
+                }, 500);
+            }
+        }, 500); // 500ms between nodes — clearly visible, one by one
+    }, [_drawNodeNow, excalidrawRef]);
+
+    // ── Public: push a node onto the queue ────────────────────────────────────
+    const handleAddNode = useCallback((node: AddNodePayload) => {
+        drawQueueRef.current.push(node);
+        drainDrawQueue();
+    }, [drainDrawQueue]);
+
+    // ── Keyboard scroll: PgUp / PgDn / arrow keys pan the canvas ─────────────
+    useEffect(() => {
+        const STEP = 200;
+        const onKey = (e: KeyboardEvent) => {
+            const api = excalidrawRef.current;
+            if (!api) return;
+            // Don't hijack when user is typing in an input/textarea
+            const tag = (e.target as HTMLElement)?.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) return;
+
+            const appState = api.getAppState() as any;
+            const zoom = appState.zoom?.value ?? 1;
+            const scrollX = appState.scrollX ?? 0;
+            const scrollY = appState.scrollY ?? 0;
+            const step = STEP / zoom;
+
+            let dx = 0, dy = 0;
+            if (e.key === "PageDown")    { dy = -step; }
+            else if (e.key === "PageUp") { dy =  step; }
+            else if (e.key === "ArrowDown"  && e.altKey) { dy = -step / 2; }
+            else if (e.key === "ArrowUp"    && e.altKey) { dy =  step / 2; }
+            else if (e.key === "ArrowRight" && e.altKey) { dx = -step / 2; }
+            else if (e.key === "ArrowLeft"  && e.altKey) { dx =  step / 2; }
+            else return;
+
+            e.preventDefault();
+            api.updateScene({ appState: { scrollX: scrollX + dx, scrollY: scrollY + dy } });
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [excalidrawRef]);
 
     const [transcript, setTranscript] = React.useState("");
     const [micActive, setMicActive] = React.useState(false);
@@ -677,6 +907,14 @@ export default function ExcalidrawWrapper({
     useEffect(() => {
         if (!isAssisted) return;
         if (ai.status === "idle" || ai.status === "error" || ai.status === "stopped") {
+            // On session start/restart: rebuild registry from existing canvas
+            // This prevents duplicates on reconnect and seeds batchEls correctly
+            nodeIdRegistry.current.clear();
+            drawnNamesRef.current.clear();
+            drawQueueRef.current = [];
+            isDrawingRef.current = false;
+            currentDiagramIdsRef.current = new Set();
+            rebuildRegistryFromCanvas(); // also seeds batchEls from current canvas
             const delayMs = ai.status === "idle" ? 0 : 2000;
             const t = setTimeout(() => ai.start().catch((err) => console.warn("AI Start Failed:", err)), delayMs);
             return () => clearTimeout(t);
@@ -685,7 +923,17 @@ export default function ExcalidrawWrapper({
 
     useEffect(() => {
         const api = excalidrawRef.current;
-        if (api) api.updateScene({ appState: { currentItemRoughness: 0 } });
+        if (api) {
+            api.updateScene({
+                appState: {
+                    currentItemRoughness: 0,
+                    currentItemFontFamily: 2,   // default new items to clean font
+                    zoom: { value: 1.0 as any }, // comfortable starting zoom
+                    scrollX: 0,
+                    scrollY: 0,
+                }
+            });
+        }
     }, [excalidrawRef.current]); // eslint-disable-line
 
     const { user } = useAuth();
@@ -718,7 +966,7 @@ export default function ExcalidrawWrapper({
     const tourSteps: Step[] = [
         { target: ".excalidraw", content: "Welcome to FlowState AI! This is your infinite canvas where you can draw architectures, flowcharts, and brainstorm ideas.", disableBeacon: true, placement: "center" },
         { target: "button[aria-label*='Library' i], .layer-ui__library-button, .sidebar-trigger", content: "Here is your component Library. You can find pre-made architecture nodes here or save your own custom components.", disableBeacon: true },
-        { target: "[data-testid='main-menu-button'], [aria-label*='Main menu' i], .App-menu_top__left", content: "Click this menu to access workspace actions like exporting your canvas as an image, saving, toggling dark mode, or starting your AI Assstant.", disableBeacon: true },
+        { target: "[data-testid='main-menu-button'], [aria-label*='Main menu' i], .App-menu_top__left", content: "Click this menu to access workspace actions like exporting your canvas as an image, saving, toggling dark mode, or starting your AI Assistant.", disableBeacon: true },
         { target: "#tour-ai-badge", content: "Once you start the AI session from the menu, your AI becomes active! This badge tells you if the AI is listening or speaking.", disableBeacon: true },
         { target: "#tour-mute-button", content: "Need some privacy? Click here to quickly mute your microphone so the AI stops listening temporarily.", disableBeacon: true },
         { target: "#tour-history-button", content: "Want to review the conversation? Click the sparkles to open the prompt history and voice playbacks.", disableBeacon: true }
@@ -735,124 +983,83 @@ export default function ExcalidrawWrapper({
     const [syncStatus, setSyncStatus] = React.useState<'saved' | 'saving' | 'error' | null>(null);
     const isRemoteUpdateRef = React.useRef(false);
 
-    // 0+1. Single Firestore listener — handles both shareMode metadata AND element sync.
-    //      Having two listeners on the same doc caused isRemoteUpdateRef to be reset
-    //      by the first listener before the second one had a chance to check it.
     useEffect(() => {
         if (!workspaceId) return;
         const unsub = onSnapshot(doc(db, "workspaces", workspaceId), (snap) => {
             if (!snap.exists()) return;
             const data = snap.data();
-
-            // Always update shareMode metadata
-            if (data.shareMode) {
-                setWorkspaceShareMode(data.shareMode as 'editor' | 'viewer');
-            }
-
-            // Only apply remote elements if we didn't write this update
+            if (data.shareMode) setWorkspaceShareMode(data.shareMode as 'editor' | 'viewer');
             if (!isRemoteUpdateRef.current && data.elements) {
                 const parsedElements = JSON.parse(data.elements);
                 const api = excalidrawRef.current;
                 if (api) {
                     const currentEls = api.getSceneElements();
-                    // Deep equality check to avoid infinite update loops
                     if (JSON.stringify(currentEls) !== JSON.stringify(parsedElements)) {
                         api.updateScene({ elements: parsedElements });
                     }
                 }
             }
-
-            // Reset the flag AFTER processing so both branches can check it
             isRemoteUpdateRef.current = false;
         });
         return () => unsub();
     }, [workspaceId]);
 
-
-    // 2. Track selected elements in a ref — written to RTDB on pointer update for zero-delay selection sync
     const selectedElementsRef = React.useRef<Record<string, boolean>>({});
 
-    // 3. Sync own pointer/cursor + color + selectedElementIds to RTDB
     const handlePointerUpdate = (payload: any) => {
         if (!user || !workspaceId || !rtdb) return;
         const { pointer, button, key } = payload;
         if (!pointer) return;
-
         const userColor = uidToColor(user.uid);
         const presenceRef = ref(rtdb, `rooms/${workspaceId}/collaborators/${user.uid}`);
         set(presenceRef, {
             id: user.uid,
             username: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : (user.email?.split('@')[0] || "Anonymous"),
-            pointer,
-            button: button || null,
-            key: key || null,
-            color: userColor,
-            // Include live selection so other users see what this user has selected
+            pointer, button: button || null, key: key || null, color: userColor,
             selectedElementIds: selectedElementsRef.current,
             lastSeen: Date.now(),
         });
     };
 
-    // 3. Listen for other users' cursors from RTDB
     useEffect(() => {
         if (!workspaceId || !rtdb) return;
-
         const collaboratorsRef = ref(rtdb, `rooms/${workspaceId}/collaborators`);
         const unsub = onValue(collaboratorsRef, (snapshot) => {
             if (snapshot.exists()) {
                 const data = snapshot.val();
                 const collaboratorsMap = new Map<string, any>();
                 const collaboratorsList: any[] = [];
-
                 Object.entries(data).forEach(([uid, collab]: [string, any]) => {
                     collaboratorsList.push(collab);
                     if (uid !== user?.uid) {
-                        // Build full Excalidraw collaborator object including selection
                         collaboratorsMap.set(uid, {
                             ...collab,
                             color: collab.color || { background: '#3b82f6', stroke: '#1d4ed8' },
-                            // selectedElementIds lets Excalidraw render colored selection overlays
                             selectedElementIds: collab.selectedElementIds || {},
                             username: collab.username || 'Anonymous',
                         });
                     }
                 });
-
                 setActiveCollaborators(collaboratorsList);
-
-                if (excalidrawRef.current) {
-                    excalidrawRef.current.updateScene({ collaborators: collaboratorsMap as any });
-                }
+                if (excalidrawRef.current) excalidrawRef.current.updateScene({ collaborators: collaboratorsMap as any });
             } else {
                 setActiveCollaborators([]);
-                if (excalidrawRef.current) {
-                    excalidrawRef.current.updateScene({ collaborators: new Map() });
-                }
+                if (excalidrawRef.current) excalidrawRef.current.updateScene({ collaborators: new Map() });
             }
         });
-
-        // Remove presence on disconnect
         if (user?.uid) {
             const myPresenceRef = ref(rtdb, `rooms/${workspaceId}/collaborators/${user.uid}`);
             onDisconnect(myPresenceRef).remove();
         }
-
         return () => unsub();
     }, [workspaceId, user?.uid]);
 
-    // 4. Persist canvas changes to Firestore (throttled) + capture live selections
     const handleSceneChange = (elements: readonly any[], appState: any) => {
         if (!user || !workspaceId) return;
-
-        // Instantly capture selected element ids so pointer updates carry them — no debounce
-        if (appState.selectedElementIds) {
-            selectedElementsRef.current = appState.selectedElementIds;
-        }
-
+        if (appState.selectedElementIds) selectedElementsRef.current = appState.selectedElementIds;
         setSyncStatus('saving');
         if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
         if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-
         syncTimeoutRef.current = setTimeout(async () => {
             try {
                 isRemoteUpdateRef.current = true;
@@ -860,13 +1067,9 @@ export default function ExcalidrawWrapper({
                 await setDoc(doc(db, "workspaces", workspaceId), {
                     elements: JSON.stringify(elements),
                     appState: JSON.stringify(safeAppState),
-                    // IMPORTANT: Only write userId when current user is the owner.
-                    // If a collaborator saves, we must NOT overwrite the owner's userId —
-                    // the library page queries workspaces by userId to show the owner's list.
                     ...(isOwner ? { userId: user.uid } : {}),
                     updatedAt: new Date().toISOString(),
                 }, { merge: true });
-
                 setSyncStatus('saved');
                 hideTimeoutRef.current = setTimeout(() => setSyncStatus(null), 2000);
             } catch (e) {
@@ -879,9 +1082,6 @@ export default function ExcalidrawWrapper({
     const otherCollaborators = activeCollaborators.filter(c => c.id !== user?.uid);
     const router = useRouter();
 
-    // ── Save a Copy (Fork) ───────────────────────────────────────────────────
-    // Creates a brand-new workspace with the current elements under the user's
-    // own UID, writes a userWorkspaces join entry, then navigates to the fork.
     const handleSaveACopy = async () => {
         if (!user || !excalidrawRef.current) return;
         try {
@@ -890,36 +1090,16 @@ export default function ExcalidrawWrapper({
             const elements = api.getSceneElements();
             const appState = api.getAppState();
             const { collaborators: _c, currentHoveredGroupId: _h, selectedElementIds: _s, ...safeAppState } = appState as any;
-
             const title = `${workspaceTitle || 'Untitled'} (copy)`;
-
-            // 1. Create the forked workspace doc
             await setDoc(doc(db, "workspaces", newId), {
-                userId: user.uid,
-                title,
-                elements: JSON.stringify(elements),
-                appState: JSON.stringify(safeAppState),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                shareMode: 'editor',
-                editTokens: [],
-                viewTokens: [],
-                forkedFrom: workspaceId,   // keeps provenance
+                userId: user.uid, title, elements: JSON.stringify(elements),
+                appState: JSON.stringify(safeAppState), createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(), shareMode: 'editor',
+                editTokens: [], viewTokens: [], forkedFrom: workspaceId,
             });
-
-            // 2. Write userWorkspaces join entry so it appears in the library
-            await setDoc(
-                doc(db, "userWorkspaces", user.uid, "items", newId),
-                {
-                    workspaceId: newId,
-                    role: 'owner',
-                    title,
-                    updatedAt: new Date().toISOString(),
-                },
-                { merge: true }
-            );
-
-            // 3. Navigate to the fork
+            await setDoc(doc(db, "userWorkspaces", user.uid, "items", newId), {
+                workspaceId: newId, role: 'owner', title, updatedAt: new Date().toISOString(),
+            }, { merge: true });
             router.push(`/workspace/${newId}`);
         } catch (e) {
             console.error("[FlowState] Failed to save a copy:", e);
@@ -933,12 +1113,7 @@ export default function ExcalidrawWrapper({
                 viewModeEnabled={!canEdit}
                 initialData={{
                     elements: initialElements || [],
-                    appState: {
-                        viewBackgroundColor: "#ffffff",
-                        currentItemFontFamily: 2,
-                        currentItemRoughness: 0,
-                        ...(initialAppState || {}),
-                    },
+                    appState: { viewBackgroundColor: "#f8fafc", currentItemFontFamily: 2, currentItemRoughness: 0, currentItemStrokeWidth: 2, theme: "light", ...(initialAppState || {}) },
                     libraryItems: savedLibraryItems,
                 }}
                 onChange={handleSceneChange}
@@ -946,10 +1121,7 @@ export default function ExcalidrawWrapper({
                 onPointerUpdate={handlePointerUpdate}
                 renderTopRightUI={() => (
                     <div className="flex gap-3 items-center mr-2 pointer-events-auto">
-                        {/* Collaborator Avatar Stack */}
                         <CollaboratorStack collaborators={activeCollaborators} currentUid={user?.uid} />
-
-                        {/* Unified Sync & Share Pill */}
                         <div className="flex items-center bg-[#ececf4] rounded-lg shadow-sm border border-transparent translate-y-[2px] overflow-hidden">
                             {syncStatus && (
                                 <>
@@ -964,24 +1136,19 @@ export default function ExcalidrawWrapper({
                                     {isOwner && <div className="w-[1px] h-4 bg-gray-400/30" />}
                                 </>
                             )}
-                            {/* Always show live sync dot when collaborators are online */}
                             {otherCollaborators.length > 0 && !syncStatus && (
                                 <>
                                     <div className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-green-600">
-                                        <Wifi size={13} className="text-green-500" />
-                                        <span>Live</span>
+                                        <Wifi size={13} className="text-green-500" /><span>Live</span>
                                     </div>
                                     {isOwner && <div className="w-[1px] h-4 bg-gray-400/30" />}
                                 </>
                             )}
                             {isOwner && (
-                                <button
-                                    onClick={() => setIsInviteModalOpen(true)}
+                                <button onClick={() => setIsInviteModalOpen(true)}
                                     className={`flex items-center gap-2 px-3 py-2 text-[#1b1b1f] text-[13px] font-medium hover:bg-[#e4e4f0] transition-all active:scale-95 ${!syncStatus && otherCollaborators.length === 0 ? 'rounded-lg' : ''}`}
-                                    title="Share workspace"
-                                >
-                                    <Share2 size={15} strokeWidth={2} />
-                                    <span>Share</span>
+                                    title="Share workspace">
+                                    <Share2 size={15} strokeWidth={2} /><span>Share</span>
                                 </button>
                             )}
                         </div>
@@ -989,31 +1156,17 @@ export default function ExcalidrawWrapper({
                 )}
             >
                 <MainMenu>
-                    <MainMenu.Item
-                        icon={<ArrowLeft size={16} />}
-                        onSelect={() => {
-                            if (window.confirm("Are you sure you want to exit? Unsaved changes may be lost.")) onBack();
-                        }}
-                    >
+                    <MainMenu.Item icon={<ArrowLeft size={16} />} onSelect={() => { if (window.confirm("Are you sure you want to exit? Unsaved changes may be lost.")) onBack(); }}>
                         Back to Library
                     </MainMenu.Item>
                     <MainMenu.Separator />
-
                     {isAssisted && (
                         <MainMenu.Item icon={ai.isRunning ? <MicOff size={16} /> : <Mic size={16} />} onSelect={toggleMic}>
                             {ai.isRunning ? "Stop AI Session" : "Start AI Session"}
                         </MainMenu.Item>
                     )}
-
-                    {/* Save a Copy — available to everyone (fork) */}
                     <MainMenu.Separator />
-                    <MainMenu.Item
-                        icon={<Copy size={16} />}
-                        onSelect={handleSaveACopy}
-                    >
-                        Save a copy
-                    </MainMenu.Item>
-
+                    <MainMenu.Item icon={<Copy size={16} />} onSelect={handleSaveACopy}>Save a copy</MainMenu.Item>
                     <MainMenu.Separator />
                     <MainMenu.DefaultItems.LoadScene />
                     <MainMenu.DefaultItems.SaveToActiveFile />
@@ -1028,19 +1181,13 @@ export default function ExcalidrawWrapper({
                 </MainMenu>
             </Excalidraw>
 
-            {/* AI Badge */}
             {isAssisted && <AIBadge status={ai.status} transcript={transcript} isMuted={ai.isMuted} toggleMute={ai.toggleMute} />}
 
-            {/* History Toggle Button */}
             {isAssisted && (
                 <div style={{ position: "fixed", bottom: "1.05rem", right: "4.5rem", zIndex: 1000, pointerEvents: "auto" }}>
-                    <button
-                        id="tour-history-button"
-                        onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+                    <button id="tour-history-button" onClick={() => setIsHistoryOpen(!isHistoryOpen)}
                         className={`group relative flex items-center justify-center w-9 h-9 rounded-md border transition-all duration-200 ${isHistoryOpen ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-[#f1f3f5] border-transparent hover:bg-[#e9ecef] text-[#495057]'}`}
-                        style={{ boxShadow: isHistoryOpen ? "0 2px 8px rgba(59,130,246,0.15)" : "none" }}
-                        title="Conversation History"
-                    >
+                        style={{ boxShadow: isHistoryOpen ? "0 2px 8px rgba(59,130,246,0.15)" : "none" }} title="Conversation History">
                         <Sparkles size={20} className={isHistoryOpen ? "animate-pulse" : "group-hover:scale-110 transition-transform"} />
                         <div className="absolute -top-1 -right-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold text-white shadow-sm ring-1 ring-white">
                             {ai.history.length}
@@ -1050,25 +1197,17 @@ export default function ExcalidrawWrapper({
             )}
 
             <HistoryPanel isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} history={ai.history} onClear={ai.clearHistory} onSend={ai.sendText} />
-
             <InviteModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} workspaceId={workspaceId} workspaceTitle={workspaceTitle} />
 
             {isAssisted && (
-                <Joyride
-                    steps={tourSteps}
-                    run={runTour}
-                    continuous
-                    showProgress
-                    showSkipButton
-                    callback={handleJoyrideCallback}
+                <Joyride steps={tourSteps} run={runTour} continuous showProgress showSkipButton callback={handleJoyrideCallback}
                     styles={{
                         options: { primaryColor: '#4285F4', zIndex: 10000 },
                         tooltip: { borderRadius: '12px', fontFamily: 'inherit', padding: '16px' },
                         buttonNext: { borderRadius: '8px', padding: '8px 16px', fontWeight: 'bold' },
                         buttonBack: { marginRight: 10, color: '#6b7280' },
                         buttonSkip: { color: '#6b7280', fontWeight: 'bold' }
-                    }}
-                />
+                    }} />
             )}
         </div>
     );
