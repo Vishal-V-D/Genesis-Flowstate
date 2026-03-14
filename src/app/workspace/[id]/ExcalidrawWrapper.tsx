@@ -604,6 +604,10 @@ export default function ExcalidrawWrapper({
     // After all nodes drawn, we fit the view to only the current diagram.
     const currentDiagramIdsRef = useRef<Set<string>>(new Set());
 
+    // ── Last draw timestamp — block Firebase overwrites for 8s after any draw ─
+    // This covers the inter-node gaps (400ms) where isDrawingRef is briefly false
+    const lastDrawTimeRef = useRef<number>(0);
+
     // ── Core draw — rich per-type styles via NODE_STYLES design system ──────────
     const _drawNodeNow = useCallback((node: AddNodePayload) => {
         const api = excalidrawRef.current;
@@ -804,6 +808,7 @@ export default function ExcalidrawWrapper({
         }
 
         api.updateScene({ elements: [...batchEls.current] });
+        lastDrawTimeRef.current = Date.now();  // mark draw time — suppress Firebase overwrites
         console.log(`[FlowState] ✅ "${name}" (${type}) @ (${px},${py}) parent=${node.connected_to || "none"}`);
     }, [excalidrawRef]);
 
@@ -818,6 +823,9 @@ export default function ExcalidrawWrapper({
         const next = drawQueueRef.current.shift()!;
         _drawNodeNow(next);
 
+        // First node: 0ms delay so it appears instantly
+        // Subsequent nodes: 400ms gap — visible one by one without feeling slow
+        const isFirst = drawQueueRef.current.length === 0;
         setTimeout(() => {
             isDrawingRef.current = false;
             if (drawQueueRef.current.length > 0) {
@@ -839,9 +847,9 @@ export default function ExcalidrawWrapper({
                             api.scrollToContent(targetEls as any, { animate: true, fitToContent: true });
                         }
                     } catch (_) {}
-                }, 500);
+                }, 400);
             }
-        }, 500); // 500ms between nodes — clearly visible, one by one
+        }, isFirst ? 0 : 400); // first node instant, rest 400ms apart
     }, [_drawNodeNow, excalidrawRef]);
 
     // ── Public: push a node onto the queue ────────────────────────────────────
@@ -983,19 +991,34 @@ export default function ExcalidrawWrapper({
     const [syncStatus, setSyncStatus] = React.useState<'saved' | 'saving' | 'error' | null>(null);
     const isRemoteUpdateRef = React.useRef(false);
 
+    // ── Guard: block remote Firebase overwrites while AI is drawing ─────────
+    // If onSnapshot fires during an active draw batch, it would overwrite
+    // batchEls with a stale snapshot (missing nodes drawn since last save).
+    // We suppress remote updates while isDrawingRef or drawQueueRef has items.
     useEffect(() => {
         if (!workspaceId) return;
         const unsub = onSnapshot(doc(db, "workspaces", workspaceId), (snap) => {
             if (!snap.exists()) return;
             const data = snap.data();
             if (data.shareMode) setWorkspaceShareMode(data.shareMode as 'editor' | 'viewer');
-            if (!isRemoteUpdateRef.current && data.elements) {
+            // Skip remote update if:
+            // 1. We just saved it ourselves (isRemoteUpdateRef)
+            // 2. AI is actively drawing nodes (isDrawingRef or queue has items)
+            // Block remote overwrites if:
+            // 1. We just saved it ourselves
+            // 2. AI is actively drawing right now
+            // 3. A draw happened within the last 8 seconds (covers inter-node gaps)
+            const aiIsDrawing = isDrawingRef.current || drawQueueRef.current.length > 0;
+            const recentlyDrawn = (Date.now() - lastDrawTimeRef.current) < 8000;
+            if (!isRemoteUpdateRef.current && !aiIsDrawing && !recentlyDrawn && data.elements) {
                 const parsedElements = JSON.parse(data.elements);
                 const api = excalidrawRef.current;
                 if (api) {
                     const currentEls = api.getSceneElements();
                     if (JSON.stringify(currentEls) !== JSON.stringify(parsedElements)) {
                         api.updateScene({ elements: parsedElements });
+                        // Re-sync batchEls so next _drawNodeNow doesn't push stale elements back
+                        batchEls.current = [...parsedElements];
                     }
                 }
             }
@@ -1076,7 +1099,7 @@ export default function ExcalidrawWrapper({
                 console.warn("[FlowState] Failed to sync workspace canvas:", e);
                 setSyncStatus('error');
             }
-        }, 1500);
+        }, 5000);  // 5s debounce — long enough for full diagram to finish drawing
     };
 
     const otherCollaborators = activeCollaborators.filter(c => c.id !== user?.uid);
