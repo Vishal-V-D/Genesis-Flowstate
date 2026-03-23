@@ -5,9 +5,97 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LibraryItems } from "@excalidraw/excalidraw/types";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import WorkspaceLoading from '../loading';
+import { Sparkles, User, Zap } from "lucide-react";
+
+// ── Mode Selection Modal ──────────────────────────────────────────────────────
+function ModeSelectionModal({ onSelect }: { onSelect: (mode: 'assisted' | 'personal') => void }) {
+    return (
+        <div style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(15, 23, 42, 0.7)',
+            backdropFilter: 'blur(12px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+            <div style={{
+                background: '#fff', borderRadius: '1.5rem',
+                padding: '2.5rem 2rem', maxWidth: '480px', width: '90%',
+                boxShadow: '0 24px 64px rgba(0,0,0,0.18)',
+                animation: 'modalPop 0.25s cubic-bezier(0.16,1,0.3,1)'
+            }}>
+                <div style={{ textAlign: 'center', marginBottom: '1.75rem' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🎨</div>
+                    <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#0f172a', margin: 0 }}>Open Workspace</h2>
+                    <p style={{ fontSize: '0.875rem', color: '#64748b', marginTop: '0.4rem', marginBottom: 0 }}>
+                        How would you like to work?
+                    </p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.875rem' }}>
+                    {/* AI Assisted */}
+                    <button onClick={() => onSelect('assisted')} style={{
+                        display: 'flex', alignItems: 'center', gap: '1rem',
+                        padding: '1.125rem 1.25rem', borderRadius: '1rem',
+                        border: '2px solid #e0e7ff',
+                        background: 'linear-gradient(135deg, #eef2ff 0%, #ede9fe 100%)',
+                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                    }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = '#6366f1')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e0e7ff')}
+                    >
+                        <div style={{
+                            width: '2.75rem', height: '2.75rem', borderRadius: '0.75rem',
+                            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                            <Sparkles size={20} color="#fff" />
+                        </div>
+                        <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#1e1b4b' }}>AI Assisted</div>
+                            <div style={{ fontSize: '0.8rem', color: '#6d28d9', marginTop: '0.15rem' }}>
+                                Voice-driven diagram generation with FlowState AI
+                            </div>
+                        </div>
+                        <Zap size={16} color="#8b5cf6" style={{ marginLeft: 'auto', flexShrink: 0 }} />
+                    </button>
+
+                    {/* Personal */}
+                    <button onClick={() => onSelect('personal')} style={{
+                        display: 'flex', alignItems: 'center', gap: '1rem',
+                        padding: '1.125rem 1.25rem', borderRadius: '1rem',
+                        border: '2px solid #e2e8f0',
+                        background: '#f8fafc',
+                        cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s',
+                    }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = '#94a3b8')}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = '#e2e8f0')}
+                    >
+                        <div style={{
+                            width: '2.75rem', height: '2.75rem', borderRadius: '0.75rem',
+                            background: 'linear-gradient(135deg, #475569, #334155)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                        }}>
+                            <User size={20} color="#fff" />
+                        </div>
+                        <div>
+                            <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>Personal</div>
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '0.15rem' }}>
+                                Free-draw on your canvas without AI
+                            </div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+            <style>{`
+                @keyframes modalPop {
+                    from { transform: scale(0.92) translateY(12px); opacity: 0; }
+                    to   { transform: scale(1)    translateY(0);    opacity: 1; }
+                }
+            `}</style>
+        </div>
+    );
+}
 
 const LIBRARY_STORAGE_KEY = "kira-excalidraw-library";
 
@@ -52,6 +140,20 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
     const [workspaceTitle, setWorkspaceTitle] = useState<string>(cached?.workspaceTitle || "");
     const [isOwner, setIsOwner] = useState(cached?.isOwner || false);
     const [canEdit, setCanEdit] = useState(cached?.canEdit || false);
+
+    // ── Mode selection: shown after workspace loads, before canvas renders ─────
+    // null = not decided yet (show modal), 'assisted'|'personal' = decided
+    const [selectedMode, setSelectedMode] = useState<'assisted' | 'personal' | null>(
+        // If URL already has ?mode=... (e.g. direct link), respect it and skip the modal
+        (searchParams?.get('mode') as 'assisted' | 'personal' | null) ?? null
+    );
+
+    const handleModeSelect = (mode: 'assisted' | 'personal') => {
+        setSelectedMode(mode);
+        const newParams = new URLSearchParams(Array.from(searchParams?.entries() || []));
+        newParams.set('mode', mode);
+        router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+    };
 
     // Enforce authentication for workspace access
     const { user, loading: authLoading } = useAuth(true);
@@ -242,6 +344,31 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
         return <WorkspaceLoading />;
     }
 
+    // Workspace is loaded — show mode picker if user hasn't decided yet
+    if (selectedMode === null) {
+        return (
+            <>
+                {/* Canvas is mounted behind the modal so it's ready when mode is chosen */}
+                <div style={{ width: "100vw", height: "100vh", visibility: "hidden", pointerEvents: "none" }}>
+                    <ExcalidrawWrapper
+                        excalidrawRef={excalidrawRef}
+                        savedLibraryItems={savedLibraryItems}
+                        initialElements={initialElements}
+                        initialAppState={initialAppState}
+                        onLibraryChange={handleLibraryChange}
+                        onBack={() => router.push('/library')}
+                        workspaceId={params.id}
+                        workspaceTitle={workspaceTitle}
+                        isOwner={isOwner}
+                        canEdit={canEdit}
+                        isAssisted={false}
+                    />
+                </div>
+                <ModeSelectionModal onSelect={handleModeSelect} />
+            </>
+        );
+    }
+
     return (
         <div style={{ width: "100vw", height: "100vh" }}>
             <ExcalidrawWrapper
@@ -255,6 +382,7 @@ function WorkspacePageInner({ params }: { params: { id: string } }) {
                 workspaceTitle={workspaceTitle}
                 isOwner={isOwner}
                 canEdit={canEdit}
+                isAssisted={selectedMode === 'assisted'}
             />
         </div>
     );

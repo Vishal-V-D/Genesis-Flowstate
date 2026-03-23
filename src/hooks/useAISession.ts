@@ -122,6 +122,7 @@ export interface AISessionHandle {
   isRunning:    boolean;
   isMuted:      boolean;
   toggleMute:   () => void;
+  interrupt:    () => void;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -140,8 +141,9 @@ export function useAISession({
   const [history,    setHistory]    = useState<HistoryMessage[]>([]);
   const [isMuted,    setIsMuted]    = useState(false);
 
-  const isMutedRef      = useRef(false);
-  const { user }        = useAuth();
+  const isMutedRef        = useRef(false);
+  const isInterruptedRef  = useRef(false);
+  const { user }          = useAuth();
 
   const toggleMute = useCallback(() => {
     setIsMuted(prev => { isMutedRef.current = !prev; return !prev; });
@@ -229,15 +231,33 @@ export function useAISession({
 
   // ── Text ───────────────────────────────────────────────────────────────────
   const sendText = useCallback((msg: string) => {
+    isInterruptedRef.current = false; // User engaged, reset interrupt
     sendBinary(TAG_TEXT, new TextEncoder().encode(msg));
     setHistory(prev => [...prev, { role: "user", text: msg, timestamp: Date.now() }]);
   }, [sendBinary]);
+
+  // ── Interrupt ──────────────────────────────────────────────────────────────
+  const interrupt = useCallback(() => {
+    isInterruptedRef.current = true;
+    pcmBufRef.current = []; // Clear queued chunks
+    nextStartRef.current = 0;
+    if (playCtxRef.current && playCtxRef.current.state === "running") {
+      playCtxRef.current.suspend();
+      setTimeout(() => playCtxRef.current?.resume(), 50); // Flush current playing audio
+    }
+  }, []);
 
   // ── Playback ───────────────────────────────────────────────────────────────
   const playPCM = useCallback(async (raw: ArrayBuffer) => {
     try {
       const view = new Uint8Array(raw);
-      const data = view[0] === TAG_AI_AUDIO ? raw.slice(1) : raw;
+      let data = view[0] === TAG_AI_AUDIO ? raw.slice(1) : raw;
+      
+      // Prevent 'byte length of Int16Array should be a multiple of 2' RangeError
+      if (data.byteLength % 2 !== 0) {
+          data = data.slice(0, data.byteLength - 1);
+      }
+      
       const ints = new Int16Array(data);
       if (ints.length === 0) return;
 
@@ -326,6 +346,7 @@ export function useAISession({
 
     worklet.port.onmessage = (e: MessageEvent<Int16Array>) => {
       if (isMutedRef.current) return;
+      isInterruptedRef.current = false; // User started speaking, reset interrupt
       sendBinary(TAG_AUDIO, new Uint8Array(e.data.buffer));
     };
 
@@ -401,6 +422,7 @@ export function useAISession({
       ws.onmessage = async (evt) => {
         // Binary = AI voice PCM
         if (evt.data instanceof ArrayBuffer) {
+          if (isInterruptedRef.current) return; // Drop audio while interrupted
           await playPCM(evt.data);
           return;
         }
@@ -487,7 +509,7 @@ export function useAISession({
     stopMic();
     stopCanvasLoop();
     if (wsRef.current) {
-      if ([WebSocket.OPEN, WebSocket.CONNECTING].includes(wsRef.current.readyState))
+      if (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)
         wsRef.current.close();
       wsRef.current = null;
     }
@@ -497,6 +519,10 @@ export function useAISession({
     if (transcriptTimer.current) clearTimeout(transcriptTimer.current);
     setTranscript("");
     updateStatus("stopped");
+    setHistory(prev => {
+      if (prev.length > 0 && prev[prev.length - 1].text === "[AI Session Stopped]") return prev;
+      return [...prev, { role: "model", text: "[AI Session Stopped]", timestamp: Date.now() }];
+    });
   }, [stopMic, stopCanvasLoop, updateStatus]);
 
   // ── Start ──────────────────────────────────────────────────────────────────
@@ -561,5 +587,6 @@ export function useAISession({
     isRunning: status === "ai_ready" || status === "ai_done",
     isMuted,
     toggleMute,
-  }), [status, transcript, history, start, stop, sendText, clearHistory, isMuted, toggleMute]);
+    interrupt,
+  }), [status, transcript, history, start, stop, sendText, clearHistory, isMuted, toggleMute, interrupt]);
 }

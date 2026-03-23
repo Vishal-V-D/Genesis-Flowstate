@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Excalidraw, MainMenu, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import Joyride, { STATUS, Step, CallBackProps } from "react-joyride";
-import { ArrowLeft, Mic, MicOff, Loader2, Sparkles, X, Trash2, History, Bot, User, Send, Play, Pause, Cloud, CloudUpload, CloudOff, Share2, Users, Wifi, Copy } from "lucide-react";
+import { ArrowLeft, Mic, MicOff, Loader2, Sparkles, X, Trash2, History, Bot, User, Send, Play, Pause, Square, Cloud, CloudUpload, CloudOff, Share2, Users, Wifi, Copy } from "lucide-react";
 import type { LibraryItems, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { useAISession, type AddNodePayload, type SessionStatus } from "@/hooks/useAISession";
@@ -244,32 +244,55 @@ interface HistoryPanelProps {
 
 function VoiceMessage({ url }: { url: string }) {
     const [isPlaying, setIsPlaying] = React.useState(false);
+    const [duration, setDuration] = React.useState(0);
+    const [currentTime, setCurrentTime] = React.useState(0);
     const audioRef = React.useRef<HTMLAudioElement | null>(null);
 
+    React.useEffect(() => {
+        const audio = new Audio(url);
+        audioRef.current = audio;
+        audio.onloadedmetadata = () => setDuration(audio.duration);
+        audio.ontimeupdate = () => setCurrentTime(audio.currentTime);
+        audio.onended = () => { setIsPlaying(false); setCurrentTime(0); };
+        return () => { audio.pause(); audio.src = ""; };
+    }, [url]);
+
     const toggle = () => {
-        if (!audioRef.current) {
-            audioRef.current = new Audio(url);
-            audioRef.current.onended = () => setIsPlaying(false);
-        }
+        if (!audioRef.current) return;
         if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
         else { audioRef.current.play(); setIsPlaying(true); }
     };
 
+    const formatTime = (time: number) => {
+        if (!time || isNaN(time)) return "0:00";
+        const m = Math.floor(time / 60);
+        const s = Math.floor(time % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+    };
+
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
     return (
-        <div className="mt-3 flex items-center gap-3 bg-white/40 backdrop-blur-sm rounded-xl p-2.5 border border-blue-200/50 shadow-sm transition-all hover:bg-white/60">
-            <button onClick={toggle} className="flex items-center justify-center w-8 h-8 bg-blue-500 text-white rounded-full hover:bg-blue-600 transition-all shadow-sm active:scale-95">
-                {isPlaying ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" className="ml-0.5" />}
+        <div className="mt-1 flex items-center gap-3 p-1 transition-all w-full min-w-[200px]">
+            <button onClick={toggle} className="flex-shrink-0 flex items-center justify-center w-[36px] h-[36px] rounded-full transition-all shadow-sm active:scale-95 bg-gradient-to-br from-indigo-500 to-purple-600 text-white border border-white/20">
+                {isPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" className="ml-0.5" />}
             </button>
-            <div className="flex-1 flex flex-col gap-1.5">
-                <div className="flex items-end gap-[2px] h-4">
-                    {[...Array(16)].map((_, i) => (
-                        <div key={i} className={`w-1 rounded-full transition-all duration-300 ${isPlaying ? 'bg-blue-500 animate-pulse' : 'bg-blue-300'}`}
-                            style={{ height: `${30 + (Math.sin(i * 0.8) * 30 + 30)}%`, animationDelay: `${i * 0.05}s` }} />
-                    ))}
+            <div className="flex-1 flex flex-col justify-center gap-1.5">
+                <div className="relative flex items-center gap-[2px] h-[20px] w-full">
+                    {[...Array(32)].map((_, i) => {
+                        const isPlayed = progress > (i / 32) * 100;
+                        const height = 25 + (Math.sin(i * 0.4) * 45 + 30) * (i % 3 === 0 ? 0.6 : 1); 
+                        return (
+                            <div key={i} className={`flex-1 rounded-full transition-colors duration-200 ${isPlayed ? 'bg-indigo-500' : 'bg-gray-300'}`}
+                                style={{ height: `${Math.min(100, Math.max(20, height))}%`, opacity: isPlayed ? 1 : 0.7 }} />
+                        );
+                    })}
                 </div>
-                <div className="flex justify-between items-center px-0.5">
-                    <span className="text-[9px] font-bold text-blue-500/60 uppercase tracking-tighter">Voice Note</span>
-                    <div className="w-[30px] h-[1px] bg-blue-200/50" />
+                <div className="flex justify-between items-center w-full px-0.5">
+                    <span className="text-[10px] font-medium text-gray-400 tracking-tight" style={{ color: "rgba(0,0,0,0.4)" }}>
+                        {isPlaying ? formatTime(currentTime) : formatTime(duration)}
+                    </span>
+                    <Sparkles size={11} className="text-gray-400" />
                 </div>
             </div>
         </div>
@@ -329,7 +352,7 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
                                 {msg.role === 'user' ? (
                                     <><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">You</span><User size={10} className="text-gray-400" /></>
                                 ) : (
-                                    <><Bot size={10} className="text-blue-500" /><span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Gemini</span></>
+                                    <><Sparkles size={10} className="text-blue-500" /><span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Friday</span></>
                                 )}
                             </div>
                             <div style={{
@@ -351,7 +374,7 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
                 <div className="relative flex items-center">
                     <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Type a message to Gemini..."
+                        placeholder="Type a message to Friday..."
                         className="w-full bg-black/5 border-none rounded-xl py-2.5 pl-4 pr-12 text-sm focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" />
                     <button onClick={handleSend} disabled={!input.trim()}
                         className="absolute right-1.5 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:hover:bg-blue-500 transition-all">
@@ -431,7 +454,7 @@ function CollaboratorStack({ collaborators, currentUid }: { collaborators: any[]
 }
 
 // ── Floating AI status badge ──────────────────────────────────────────────────
-function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionStatus; transcript: string; isMuted: boolean; toggleMute: () => void }) {
+function AIBadge({ status, transcript, isMuted, toggleMute, start, stop }: { status: SessionStatus; transcript: string; isMuted: boolean; toggleMute: () => void; start: () => void; stop: () => void; }) {
     const labels: Record<SessionStatus, string> = {
         idle: "AI Offline", requesting_permissions: "Requesting permissions…",
         connecting: "Connecting to FlowState AI…", ai_ready: "Listening",
@@ -469,14 +492,32 @@ function AIBadge({ status, transcript, isMuted, toggleMute }: { status: SessionS
                     <span className={isListening ? "tracking-widest uppercase text-[11px] font-bold mx-2" : ""}>{labels[status]}</span>
                     {isListening && renderVisualizer()}
                 </div>
-                {(status === "ai_ready" || status === "ai_done") && (
-                    <button id="tour-mute-button" onClick={toggleMute}
-                        className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border ${isMuted ? 'bg-red-50/95 text-red-600 border-red-200 hover:bg-red-100' : 'bg-white/95 text-gray-700 border-black/5 hover:bg-gray-50'}`}
-                        style={{ backdropFilter: "blur(8px)" }} title={isMuted ? "Unmute AI Session" : "Mute AI Session"}>
-                        {isMuted ? <MicOff size={14} strokeWidth={2.5} /> : <Mic size={14} strokeWidth={2.5} />}
-                        <span className="uppercase tracking-widest text-[10px] pr-1">{isMuted ? "Unmute" : "Mute"}</span>
-                    </button>
-                )}
+                <div className="flex items-center gap-1.5">
+                    {isListening && (
+                        <button id="tour-mute-button" onClick={toggleMute}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border ${isMuted ? 'bg-red-50/95 text-red-600 border-red-200 hover:bg-red-100' : 'bg-white/95 text-gray-700 border-black/5 hover:bg-gray-50'}`}
+                            style={{ backdropFilter: "blur(8px)" }} title={isMuted ? "Unmute AI Session" : "Mute AI Session"}>
+                            {isMuted ? <MicOff size={14} strokeWidth={2.5} /> : <Mic size={14} strokeWidth={2.5} />}
+                            <span className="uppercase tracking-widest text-[10px] pr-1">{isMuted ? "Unmute" : "Mute"}</span>
+                        </button>
+                    )}
+
+                    {isListening || status === "connecting" || status === "requesting_permissions" ? (
+                        <button onClick={stop}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border bg-white/95 text-gray-700 border-black/5 hover:bg-red-50 hover:text-red-600 hover:border-red-200"
+                            style={{ backdropFilter: "blur(8px)" }} title="Stop AI Session">
+                            <Square size={13} fill="currentColor" />
+                            <span className="uppercase tracking-widest text-[10px] pr-1">Stop</span>
+                        </button>
+                    ) : (status === "stopped" || status === "idle" || status === "error") ? (
+                        <button onClick={start}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold transition-all shadow-sm border bg-white/95 text-gray-700 border-black/5 hover:bg-green-50 hover:text-green-600 hover:border-green-200"
+                            style={{ backdropFilter: "blur(8px)" }} title="Start AI Session">
+                            <Play size={13} fill="currentColor" />
+                            <span className="uppercase tracking-widest text-[10px] pr-1">Start</span>
+                        </button>
+                    ) : null}
+                </div>
             </div>
         </div>
     );
@@ -542,6 +583,7 @@ function SelectionNameLabels({ collaborators, excalidrawRef, currentUid }: { col
 export default function ExcalidrawWrapper({
     excalidrawRef, savedLibraryItems, initialElements, initialAppState,
     onLibraryChange, onBack, workspaceId, workspaceTitle, isOwner = false, canEdit = true,
+    isAssisted = false,
 }: {
     excalidrawRef: React.MutableRefObject<ExcalidrawImperativeAPI | null>;
     savedLibraryItems: LibraryItems;
@@ -553,11 +595,8 @@ export default function ExcalidrawWrapper({
     workspaceTitle?: string;
     isOwner?: boolean;
     canEdit?: boolean;
+    isAssisted?: boolean;
 }) {
-    const searchParams = useSearchParams();
-    const mode = searchParams?.get("mode") ?? "personal";
-    const isAssisted = mode === "assisted";
-
     const [isInviteModalOpen, setIsInviteModalOpen] = React.useState(false);
     const [workspaceShareMode, setWorkspaceShareMode] = React.useState<'editor' | 'viewer'>('editor');
     const [activeCollaborators, setActiveCollaborators] = React.useState<any[]>([]);
@@ -569,14 +608,11 @@ export default function ExcalidrawWrapper({
     // node_name → excalidraw shape element id
     const nodeIdRegistry = useRef<Map<string, string>>(new Map());
     // names already on canvas — dedup guard, never reset mid-session
-    const drawnNamesRef  = useRef<Set<string>>(new Set());
+    const drawnNamesRef = useRef<Set<string>>(new Set());
     // pending nodes waiting to be drawn one at a time
-    const drawQueueRef   = useRef<AddNodePayload[]>([]);
+    const drawQueueRef = useRef<AddNodePayload[]>([]);
     // lock — prevents concurrent draws
-    const isDrawingRef   = useRef(false);
-    // accumulated elements built during this draw batch — written atomically
-    const batchEls       = useRef<any[]>([]);
-
+    const isDrawingRef = useRef(false);
     // ── On reconnect: scan canvas and pre-fill registry so we never redraw ───
     const rebuildRegistryFromCanvas = useCallback(() => {
         const api = excalidrawRef.current;
@@ -594,8 +630,6 @@ export default function ExcalidrawWrapper({
             }
         });
 
-        // Seed batchEls with whatever is already on canvas
-        batchEls.current = [...els];
         console.log("[FlowState] Registry rebuilt:", drawnNamesRef.current.size, "nodes");
     }, [excalidrawRef]);
 
@@ -603,6 +637,9 @@ export default function ExcalidrawWrapper({
     // When a new diagram starts (root node with no parent), we reset this set.
     // After all nodes drawn, we fit the view to only the current diagram.
     const currentDiagramIdsRef = useRef<Set<string>>(new Set());
+
+    // ── Track AI generated nodes locally for instant 0-latency collision detection 
+    const drawnBoxesRef = useRef<Array<{ x: number, y: number, width: number, height: number, type: string, isDeleted: boolean }>>([]);
 
     // ── Last draw timestamp — block Firebase overwrites for 8s after any draw ─
     // This covers the inter-node gaps (400ms) where isDrawingRef is briefly false
@@ -615,7 +652,7 @@ export default function ExcalidrawWrapper({
 
         const name = (node.node_name || "Node").trim();
         const type = (node.node_type || "process").toLowerCase();
-        const S    = getStyle(type);
+        const S = getStyle(type);
 
         if (drawnNamesRef.current.has(name)) {
             console.log(`[FlowState] ⏭ Skip dup "${name}"`);
@@ -630,32 +667,31 @@ export default function ExcalidrawWrapper({
         const GAP_V = 100;   // px between bottom of parent and top of child
         const GAP_H = 160;   // px between right of parent and left of sibling
 
-        // ── Find parent shape in batchEls ─────────────────────────────────────
-        // IMPORTANT: after convertToExcalidrawElements the returned shape element
-        // has the SAME id we passed in. Text bound elements have a different id.
-        // So nodeIdRegistry maps node_name → shape element id reliably.
+        // ── Find parent shape in live canvas ──────────────────────────────────
         let px = 300, py = 60;
         let parentElId: string | null = null;
         let pX = 0, pY = 0, pW = 0, pH = 0, pCX = 0, pCY = 0;
 
+        const liveEls = api.getSceneElements().filter((e: any) => !e.isDeleted) as any[];
+
         if (node.connected_to) {
             const connName = node.connected_to.trim();
-            const regId    = nodeIdRegistry.current.get(connName);
+            const regId = nodeIdRegistry.current.get(connName);
 
             // Primary lookup: registry id → shape element
             let parentEl: any = regId
-                ? batchEls.current.find((e: any) => e.id === regId && e.type !== "arrow" && e.type !== "text")
+                ? liveEls.find((e: any) => e.id === regId && e.type !== "arrow" && e.type !== "text")
                 : null;
 
             // Fallback: search bound text elements by label content
             if (!parentEl) {
-                const lower  = connName.toLowerCase();
-                const textEl = batchEls.current.find(
+                const lower = connName.toLowerCase();
+                const textEl = liveEls.find(
                     (e: any) => e.type === "text" && e.containerId &&
-                    (e.text ?? "").toLowerCase().trim() === lower
+                        (e.text ?? "").toLowerCase().trim() === lower
                 );
                 if (textEl?.containerId) {
-                    parentEl = batchEls.current.find(
+                    parentEl = liveEls.find(
                         (e: any) => e.id === textEl.containerId && e.type !== "arrow"
                     );
                 }
@@ -664,18 +700,18 @@ export default function ExcalidrawWrapper({
             if (parentEl) {
                 parentElId = parentEl.id;
                 // Use actual rendered dimensions from the element
-                pX  = parentEl.x      ?? 0;
-                pY  = parentEl.y      ?? 0;
-                pW  = parentEl.width  ?? w;
-                pH  = parentEl.height ?? h;
+                pX = parentEl.x ?? 0;
+                pY = parentEl.y ?? 0;
+                pW = parentEl.width ?? w;
+                pH = parentEl.height ?? h;
                 pCX = pX + pW / 2;
                 pCY = pY + pH / 2;
 
                 const dir = (node.placement || "bottom").toLowerCase();
-                if      (dir === "bottom") { px = pCX - w / 2;       py = pY + pH + GAP_V; }
-                else if (dir === "top")    { px = pCX - w / 2;       py = pY - h  - GAP_V; }
-                else if (dir === "right")  { px = pX + pW + GAP_H;   py = pCY - h / 2;     }
-                else  /* left */           { px = pX  - w  - GAP_H;  py = pCY - h / 2;     }
+                if (dir === "bottom") { px = pCX - w / 2; py = pY + pH + GAP_V; }
+                else if (dir === "top") { px = pCX - w / 2; py = pY - h - GAP_V; }
+                else if (dir === "right") { px = pX + pW + GAP_H; py = pCY - h / 2; }
+                else  /* left */ { px = pX - w - GAP_H; py = pCY - h / 2; }
             } else {
                 console.warn(`[FlowState] ⚠️ parent "${connName}" not found — placing at default`);
             }
@@ -689,8 +725,8 @@ export default function ExcalidrawWrapper({
             // NEW DIAGRAM STARTING — reset the current diagram ID tracker
             currentDiagramIdsRef.current = new Set();
 
-            const shapes = batchEls.current.filter(
-                (e: any) => e.type !== "arrow" && e.type !== "text" && !e.isDeleted
+            const shapes = liveEls.filter(
+                (e: any) => e.type !== "arrow" && e.type !== "text"
             );
             if (shapes.length > 0) {
                 // Find the rightmost edge of ALL existing shapes
@@ -719,31 +755,33 @@ export default function ExcalidrawWrapper({
         const nodeId = crypto.randomUUID();
 
         const converted = convertToExcalidrawElements([{
-            type:            S.shape as any,
-            id:              nodeId,
+            type: S.shape as any,
+            id: nodeId,
             x: px, y: py,
             width: w, height: h,
-            strokeColor:     S.stroke,
+            strokeColor: S.stroke,
             backgroundColor: S.bg,
-            fillStyle:       S.fillStyle as any,
-            strokeWidth:     S.strokeWidth,
-            strokeStyle:     S.strokeStyle as any,
-            roughness:       0,
-            roundness:       S.roundness,
+            fillStyle: S.fillStyle as any,
+            strokeWidth: S.strokeWidth,
+            strokeStyle: S.strokeStyle as any,
+            roughness: 0,
+            roundness: S.roundness,
             label: {
-                text:          name,
-                fontSize:      S.labelSize,
-                fontFamily:    2,
-                textAlign:     "center"  as const,
-                verticalAlign: "middle"  as const,
-                strokeColor:   S.labelColor,
+                text: name,
+                fontSize: S.labelSize,
+                fontFamily: 2,
+                textAlign: "center" as const,
+                verticalAlign: "middle" as const,
+                strokeColor: S.labelColor,
             },
         }]);
 
         // Register BEFORE pushing so arrow lookup works immediately
         nodeIdRegistry.current.set(name, nodeId);
         drawnNamesRef.current.add(name);
-        batchEls.current.push(...converted);
+
+        const newElementsToAppend = [...converted];
+
         // Track this node as part of the current diagram
         currentDiagramIdsRef.current.add(nodeId);
 
@@ -757,57 +795,62 @@ export default function ExcalidrawWrapper({
             // Midpoints of the relevant edges for start and end
             let sx: number, sy: number, ex: number, ey: number;
             if (dir === "bottom") {
-                sx = pCX;           sy = pY + pH;      // bottom-center of parent
-                ex = px + w / 2;    ey = py;           // top-center of child
+                sx = pCX; sy = pY + pH;      // bottom-center of parent
+                ex = px + w / 2; ey = py;           // top-center of child
             } else if (dir === "top") {
-                sx = pCX;           sy = pY;           // top-center of parent
-                ex = px + w / 2;    ey = py + h;       // bottom-center of child
+                sx = pCX; sy = pY;           // top-center of parent
+                ex = px + w / 2; ey = py + h;       // bottom-center of child
             } else if (dir === "right") {
-                sx = pX + pW;       sy = pCY;          // right-center of parent
-                ex = px;            ey = py + h / 2;   // left-center of child
+                sx = pX + pW; sy = pCY;          // right-center of parent
+                ex = px; ey = py + h / 2;   // left-center of child
             } else {
-                sx = pX;            sy = pCY;          // left-center of parent
-                ex = px + w;        ey = py + h / 2;   // right-center of child
+                sx = pX; sy = pCY;          // left-center of parent
+                ex = px + w; ey = py + h / 2;   // right-center of child
             }
 
-            const edgeLabel  = ((node as any).edge_label || "").trim();
+            const edgeLabel = ((node as any).edge_label || "").trim();
             const arrowColor = S.arrowColor;
             const arrowStyle = S.arrowStyle;
-            const arrowEnd   = S.arrowEnd   as any;
+            const arrowEnd = S.arrowEnd as any;
             const arrowStart = S.arrowStart as any;
 
             const arrowConverted = convertToExcalidrawElements([{
-                type:        "arrow" as const,
-                id:          crypto.randomUUID(),
+                type: "arrow" as const,
+                id: crypto.randomUUID(),
                 // Place arrow at start point; points are relative offsets
                 x: sx, y: sy,
-                width:  ex - sx,
+                width: ex - sx,
                 height: ey - sy,
                 points: [[0, 0], [ex - sx, ey - sy]] as any,
-                strokeColor:    arrowColor,
-                strokeWidth:    2,
-                strokeStyle:    arrowStyle as any,
-                roughness:      0,
+                strokeColor: arrowColor,
+                strokeWidth: 2,
+                strokeStyle: arrowStyle as any,
+                roughness: 0,
                 // Binding tells Excalidraw to snap arrow ends to shape edges
-                startBinding:   { elementId: parentElId, focus: 0, gap: 6 },
-                endBinding:     { elementId: nodeId,     focus: 0, gap: 6 },
+                startBinding: { elementId: parentElId, focus: 0, gap: 6 },
+                endBinding: { elementId: nodeId, focus: 0, gap: 6 },
                 startArrowhead: arrowStart === "none" ? null : arrowStart,
-                endArrowhead:   arrowEnd   === "none" ? null : arrowEnd,
+                endArrowhead: arrowEnd === "none" ? null : arrowEnd,
                 ...(edgeLabel ? {
                     label: {
-                        text:        edgeLabel,
-                        fontSize:    11,
-                        fontFamily:  2,
+                        text: edgeLabel,
+                        fontSize: 11,
+                        fontFamily: 2,
                         strokeColor: arrowColor,
                     }
                 } : {}),
             }]);
-            batchEls.current.push(...arrowConverted);
+            newElementsToAppend.push(...arrowConverted);
             // Track arrow as part of current diagram too
             arrowConverted.forEach((el: any) => currentDiagramIdsRef.current.add(el.id));
         }
 
-        api.updateScene({ elements: [...batchEls.current] });
+        api.updateScene({ elements: [...liveEls, ...newElementsToAppend] });
+        
+        // Push the newly drawn node to our instant local tracker so the very next 
+        // node generated a fraction of a second from now won't overlap it!
+        drawnBoxesRef.current.push({ x: px, y: py, width: w, height: h, type: "rectangle", isDeleted: false });
+        
         lastDrawTimeRef.current = Date.now();  // mark draw time — suppress Firebase overwrites
         console.log(`[FlowState] ✅ "${name}" (${type}) @ (${px},${py}) parent=${node.connected_to || "none"}`);
     }, [excalidrawRef]);
@@ -831,7 +874,7 @@ export default function ExcalidrawWrapper({
             if (drawQueueRef.current.length > 0) {
                 drainDrawQueue(); // draw next node — NO scroll until all done
             } else {
-                // All nodes drawn — fit to current diagram only (not all old diagrams)
+                // All nodes drawn — fit view, then force-save immediately
                 setTimeout(() => {
                     try {
                         const api = excalidrawRef.current;
@@ -846,7 +889,10 @@ export default function ExcalidrawWrapper({
                         if (targetEls.length > 0) {
                             api.scrollToContent(targetEls as any, { animate: true, fitToContent: true });
                         }
-                    } catch (_) {}
+                    } catch (_) { }
+                    // Force-save immediately after AI finishes — bypasses the 3s debounce
+                    if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
+                    forceSaveRef.current?.();
                 }, 400);
             }
         }, isFirst ? 0 : 400); // first node instant, rest 400ms apart
@@ -875,12 +921,12 @@ export default function ExcalidrawWrapper({
             const step = STEP / zoom;
 
             let dx = 0, dy = 0;
-            if (e.key === "PageDown")    { dy = -step; }
-            else if (e.key === "PageUp") { dy =  step; }
-            else if (e.key === "ArrowDown"  && e.altKey) { dy = -step / 2; }
-            else if (e.key === "ArrowUp"    && e.altKey) { dy =  step / 2; }
+            if (e.key === "PageDown") { dy = -step; }
+            else if (e.key === "PageUp") { dy = step; }
+            else if (e.key === "ArrowDown" && e.altKey) { dy = -step / 2; }
+            else if (e.key === "ArrowUp" && e.altKey) { dy = step / 2; }
             else if (e.key === "ArrowRight" && e.altKey) { dx = -step / 2; }
-            else if (e.key === "ArrowLeft"  && e.altKey) { dx =  step / 2; }
+            else if (e.key === "ArrowLeft" && e.altKey) { dx = step / 2; }
             else return;
 
             e.preventDefault();
@@ -914,7 +960,9 @@ export default function ExcalidrawWrapper({
 
     useEffect(() => {
         if (!isAssisted) return;
-        if (ai.status === "idle" || ai.status === "error" || ai.status === "stopped") {
+        // Auto-start on load (idle) or auto-reconnect on error.
+        // DO NOT auto-reconnect if user explicitly stopped it or connection closed cleanly.
+        if (ai.status === "idle" || ai.status === "error") {
             // On session start/restart: rebuild registry from existing canvas
             // This prevents duplicates on reconnect and seeds batchEls correctly
             nodeIdRegistry.current.clear();
@@ -923,7 +971,7 @@ export default function ExcalidrawWrapper({
             isDrawingRef.current = false;
             currentDiagramIdsRef.current = new Set();
             rebuildRegistryFromCanvas(); // also seeds batchEls from current canvas
-            const delayMs = ai.status === "idle" ? 0 : 2000;
+            const delayMs = ai.status === "idle" ? 0 : 3000;
             const t = setTimeout(() => ai.start().catch((err) => console.warn("AI Start Failed:", err)), delayMs);
             return () => clearTimeout(t);
         }
@@ -987,9 +1035,11 @@ export default function ExcalidrawWrapper({
 
     // ── Document Syncing ─────────────────────────────────────────────────────
     const syncTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-    const hideTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-    const [syncStatus, setSyncStatus] = React.useState<'saved' | 'saving' | 'error' | null>(null);
-    const isRemoteUpdateRef = React.useRef(false);
+    const [syncStatus, setSyncStatus] = React.useState<'saved' | 'saving' | 'error'>('saved');
+    const lastSavedElementsStringRef = React.useRef<string | null>(null);
+
+    // ── Force-save: used after AI finishes a draw batch to persist immediately ─
+    const forceSaveRef = React.useRef<(() => Promise<void>) | null>(null);
 
     // ── Guard: block remote Firebase overwrites while AI is drawing ─────────
     // If onSnapshot fires during an active draw batch, it would overwrite
@@ -1005,24 +1055,23 @@ export default function ExcalidrawWrapper({
             // 1. We just saved it ourselves (isRemoteUpdateRef)
             // 2. AI is actively drawing nodes (isDrawingRef or queue has items)
             // Block remote overwrites if:
-            // 1. We just saved it ourselves
+            // 1. We just saved it ourselves (data.elements matches what we last saved)
             // 2. AI is actively drawing right now
             // 3. A draw happened within the last 8 seconds (covers inter-node gaps)
             const aiIsDrawing = isDrawingRef.current || drawQueueRef.current.length > 0;
             const recentlyDrawn = (Date.now() - lastDrawTimeRef.current) < 8000;
-            if (!isRemoteUpdateRef.current && !aiIsDrawing && !recentlyDrawn && data.elements) {
+            const isOwnSave = data.elements === lastSavedElementsStringRef.current;
+
+            if (!isOwnSave && !aiIsDrawing && !recentlyDrawn && data.elements) {
                 const parsedElements = JSON.parse(data.elements);
                 const api = excalidrawRef.current;
                 if (api) {
-                    const currentEls = api.getSceneElements();
-                    if (JSON.stringify(currentEls) !== JSON.stringify(parsedElements)) {
-                        api.updateScene({ elements: parsedElements });
-                        // Re-sync batchEls so next _drawNodeNow doesn't push stale elements back
-                        batchEls.current = [...parsedElements];
-                    }
+                    // Update scene only if the remote elements actually changed
+                    api.updateScene({ elements: parsedElements });
+                    // Also update our local ref so we don't re-trigger unnecessarily
+                    lastSavedElementsStringRef.current = data.elements;
                 }
             }
-            isRemoteUpdateRef.current = false;
         });
         return () => unsub();
     }, [workspaceId]);
@@ -1077,29 +1126,63 @@ export default function ExcalidrawWrapper({
         return () => unsub();
     }, [workspaceId, user?.uid]);
 
+    // ── Core save function — always reads fresh from API, never a stale closure ─
+    const doSave = React.useCallback(async () => {
+        console.log("[FlowState] 🔄 doSave() called.");
+        if (!user || !workspaceId) {
+            console.log("[FlowState] 🛑 doSave() aborted: Missing user or workspaceId", { hasUser: !!user, workspaceId });
+            return;
+        }
+        const api = excalidrawRef.current;
+        if (!api) {
+            console.log("[FlowState] 🛑 doSave() aborted: excalidrawRef.current is null.");
+            return;
+        }
+        try {
+            // Always get latest elements directly from the API to avoid stale closures
+            const liveElements = api.getSceneElements().filter((e: any) => !e.isDeleted);
+            const liveAppState = api.getAppState() as any;
+            const elementsString = JSON.stringify(liveElements);
+            
+            // Don't save if nothing has changed since last save
+            if (elementsString === lastSavedElementsStringRef.current) {
+                console.log("[FlowState] 🛑 doSave() aborted: No changes detected. Canvas matches last saved state.");
+                return;
+            }
+            
+            console.log(`[FlowState] 🚀 doSave() proceeding to save ${liveElements.length} elements to Firebase workspaces/${workspaceId}. isOwner: ${isOwner}`);
+            setSyncStatus('saving');
+            const { collaborators, currentHoveredGroupId, selectedElementIds: _sel, ...safeAppState } = liveAppState;
+            
+            await setDoc(doc(db, "workspaces", workspaceId), {
+                elements: elementsString,
+                appState: JSON.stringify(safeAppState),
+                ...(isOwner ? { userId: user.uid } : {}),
+                updatedAt: new Date().toISOString(),
+            }, { merge: true });
+            
+            lastSavedElementsStringRef.current = elementsString;
+            setSyncStatus('saved');
+            console.log('[FlowState] ✅ Successfully Saved', liveElements.length, 'elements to Firebase!');
+        } catch (e) {
+            console.error("[FlowState] ❌ Failed to sync workspace canvas:", e);
+            setSyncStatus('error');
+        }
+    }, [user, workspaceId, isOwner, excalidrawRef]); // eslint-disable-line
+
+    // Keep the forceSaveRef always pointing to the latest doSave
+    React.useEffect(() => { forceSaveRef.current = doSave; }, [doSave]);
+
     const handleSceneChange = (elements: readonly any[], appState: any) => {
         if (!user || !workspaceId) return;
         if (appState.selectedElementIds) selectedElementsRef.current = appState.selectedElementIds;
-        setSyncStatus('saving');
-        if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+        // Debounce — clear previous timer and schedule a fresh save
         if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-        syncTimeoutRef.current = setTimeout(async () => {
-            try {
-                isRemoteUpdateRef.current = true;
-                const { collaborators, currentHoveredGroupId, selectedElementIds: _sel, ...safeAppState } = appState;
-                await setDoc(doc(db, "workspaces", workspaceId), {
-                    elements: JSON.stringify(elements),
-                    appState: JSON.stringify(safeAppState),
-                    ...(isOwner ? { userId: user.uid } : {}),
-                    updatedAt: new Date().toISOString(),
-                }, { merge: true });
-                setSyncStatus('saved');
-                hideTimeoutRef.current = setTimeout(() => setSyncStatus(null), 2000);
-            } catch (e) {
-                console.warn("[FlowState] Failed to sync workspace canvas:", e);
-                setSyncStatus('error');
-            }
-        }, 5000);  // 5s debounce — long enough for full diagram to finish drawing
+        const elementsString = JSON.stringify(elements.filter((e: any) => !e.isDeleted));
+        if (elementsString !== lastSavedElementsStringRef.current) {
+            console.log("[FlowState] 🔄 handleSceneChange() detected differences. Starting 3s debounce to execute doSave().");
+        }
+        syncTimeoutRef.current = setTimeout(() => doSave(), 3000); // 3s debounce
     };
 
     const otherCollaborators = activeCollaborators.filter(c => c.id !== user?.uid);
@@ -1204,7 +1287,7 @@ export default function ExcalidrawWrapper({
                 </MainMenu>
             </Excalidraw>
 
-            {isAssisted && <AIBadge status={ai.status} transcript={transcript} isMuted={ai.isMuted} toggleMute={ai.toggleMute} />}
+            {isAssisted && <AIBadge status={ai.status} transcript={transcript} isMuted={ai.isMuted} toggleMute={ai.toggleMute} start={ai.start} stop={ai.stop} />}
 
             {isAssisted && (
                 <div style={{ position: "fixed", bottom: "1.05rem", right: "4.5rem", zIndex: 1000, pointerEvents: "auto" }}>
