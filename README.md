@@ -1,174 +1,86 @@
-# FlowState
+# Genesis FlowState
 
-**FlowState** is a real-time collaborative architecture diagramming tool powered by AI. Draw system architectures, flowcharts, and brainstorm ideas with your team — all in sync, in real-time.
+![FlowState](https://img.shields.io/badge/Status-Active-success) ![Next.js](https://img.shields.io/badge/Next.js-14.x-black?logo=next.js) ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue?logo=typescript)
 
-Built with [Excalidraw](https://excalidraw.com/), Firebase, and Gemini AI.
+**FlowState** is a next-generation Visual Compiler and IDE for Cloud Engineers. It bridges the gap between system architecture design and Infrastructure as Code (IaC) by allowing you to design system topologies on an interactive visual canvas and automatically compile them into clean, ready-to-deploy HashiCorp Terraform configurations, Prisma schemas, and comprehensive documentation.
 
----
+## 🚀 Features
 
-## ✨ Features
+- **Visual Architecture Canvas**: Design your cloud infrastructure using an intuitive drag-and-drop whiteboard. No more mental mapping—see your architecture as you build it.
+- **Instant IaC Compilation**: FlowState automatically compiles your visual nodes and connections into production-ready HashiCorp HCL (Terraform) with zero legacy dependencies.
+- **Vibe Coding Environment**: A fully integrated, browser-based mock IDE experience that lets you review multi-language targets, run live security audits, and view output logs natively tied to your diagram.
+- **Real-Time Security Auditing**: Automatically generates threat models and architecture documentation, validating rules like encryptions (SSE-KMS) and permissive Security Groups.
+- **B2B SaaS Ready**: Beautiful, high-performance dark-mode interface built with modern web aesthetics, dynamic scroll animations, and interactive elements.
+- **Architecture Templates**: Built-in interactive playgrounds for standard three-tier web apps, serverless REST APIs, and event-driven microservices.
 
-- 🎨 **Infinite canvas** via Excalidraw — draw anything
-- 🤝 **Real-time collaboration** — see live cursors, colored selections, and presence avatars for every collaborator
-- 🔒 **Permission-based sharing** — generate signed Editor links or Viewer-only links per workspace
-- 🤖 **AI assistant** — voice-powered Gemini AI that draws nodes on command
-- 📚 **Component library** — reusable architecture node library synced per user
-- ☁️ **Auto-save** — all changes are continuously synced to Firestore
+## 🧠 How It Works
 
----
+FlowState parses the visual graph (nodes and edges) from your whiteboard session and translates it into an Abstract Syntax Tree (AST). The internal compiler then synthesizes this AST into various development artifacts.
 
-## 🚀 Getting Started
-
-### 1. Clone the repo
-
-```bash
-git clone https://github.com/Vishal-V-D/FlowState.git
-cd FlowState
+```mermaid
+graph TD
+    A[Visual Canvas / Whiteboard] -->|AST Extraction| B(FlowState Compiler Engine)
+    
+    subgraph Target Synthesis
+        B -->|Infrastructure| C[Terraform HCL]
+        B -->|Database| D[Prisma Schemas]
+        B -->|Automation| E[CI/CD Workflows]
+        B -->|Documentation| F[Threat Models & Architecture]
+    end
+    
+    C --> G[Cloud Deployment]
 ```
 
-### 2. Install dependencies
+1. **Design**: Drag and drop nodes representing cloud primitives (ALBs, EC2 ASGs, DynamoDB, Lambda, etc.) on the canvas.
+2. **Compile**: Click to run the FlowState compiler. The visual AST is parsed in real-time.
+3. **Review**: Check the generated artifacts in the built-in IDE environment. Review Terraform `.tf` files, Prisma schemas, and GitHub Actions workflows.
+4. **Deploy**: Take the synthesized code and run it in your CLI to deploy your robust, automated architecture.
 
-```bash
-npm install
-```
+## 🛠️ Technology Stack
 
-### 3. Configure Firebase
+- **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **Animations**: [Framer Motion](https://www.framer.com/motion/) for fluid, declarative scroll and interactive animations.
+- **3D / WebGL**: [OGL](https://github.com/oframe/ogl) for high-performance, lightweight WebGL backgrounds (Lightfall, LightPillar).
+- **Icons**: [Lucide React](https://lucide.dev/)
+- **State Management**: React Hooks (`useState`, `useEffect`, `useTransform`)
+- **Authentication**: Custom Auth integration hooks (`useAuth`).
 
-Copy the example env file and fill in your Firebase project credentials:
+## 💻 Getting Started
 
-```bash
-cp .env.example .env.local
-```
+### Prerequisites
 
-Then open `.env.local` and add your values (see the [Firebase setup](#firebase-setup) section below).
+- Node.js 18.x or higher
+- npm or yarn
 
-### 4. Run the development server
+### Installation
 
-```bash
-npm run dev
-```
+1. Clone the repository:
+   \`\`\`bash
+   git clone https://github.com/Vishal-V-D/Genesis-Flowstate.git
+   cd Genesis-Flowstate
+   \`\`\`
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+2. Install dependencies:
+   \`\`\`bash
+   npm install
+   \`\`\`
 
----
+3. Run the development server:
+   \`\`\`bash
+   npm run dev
+   \`\`\`
 
-## 🔥 Firebase Setup
+4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-This project uses:
-- **Firebase Auth** — for user sign-in (Email/Password)
-- **Firestore** — for workspace data, user library items, and share tokens
-- **Realtime Database (RTDB)** — for live cursor/presence data
+## 🏗️ Project Structure
 
-### Steps
-
-1. Go to [Firebase Console](https://console.firebase.google.com/) and **create a new project**
-2. Enable **Authentication** → Email/Password
-3. Enable **Firestore Database** (start in production mode, then update rules)
-4. Enable **Realtime Database** and set a region
-5. Go to **Project Settings → Your apps → Web app** and register a web app
-6. Copy the config values into your `.env.local`:
-
-```env
-NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.firebasestorage.app
-NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
-NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your_measurement_id
-NEXT_PUBLIC_FIREBASE_DATABASE_URL=https://your_project-default-rtdb.firebaseio.com/
-```
-
-### Recommended Firestore Rules
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-    }
-    match /workspaces/{workspaceId} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null;
-    }
-  }
-}
-```
-
-### Recommended Realtime Database Rules
-
-```json
-{
-  "rules": {
-    "rooms": {
-      "$workspaceId": {
-        "collaborators": {
-          "$uid": {
-            ".read": "auth != null",
-            ".write": "auth != null && auth.uid == $uid"
-          }
-        }
-      }
-    }
-  }
-}
-```
-
----
-
-## 🏗️ Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Framework | Next.js 14 (App Router) |
-| Canvas | Excalidraw |
-| Styling | Tailwind CSS |
-| Auth & DB | Firebase Auth + Firestore |
-| Realtime | Firebase Realtime Database |
-| AI | Gemini Live API (via `useAISession`) |
-| Icons | Lucide React |
-
----
-
-## 📁 Project Structure
-
-```
-src/
-├── app/
-│   ├── workspace/[id]/      # Workspace canvas page + ExcalidrawWrapper
-│   ├── library/             # Library page (list of workspaces)
-│   ├── signin/ signup/      # Auth pages
-│   └── page.tsx             # Landing page
-├── components/
-│   ├── workspace/           # InviteModal, NewWorkspaceModal
-│   └── landing/             # Landing page sections
-├── hooks/
-│   ├── useAuth.ts           # Firebase auth hook
-│   └── useAISession.ts      # Gemini AI voice session hook
-└── lib/
-    └── firebase.ts          # Firebase initialization (reads from env)
-```
-
----
-
-## 🔑 Environment Variables
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_FIREBASE_API_KEY` | Firebase API key |
-| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Firebase auth domain |
-| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Firestore project ID |
-| `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` | Firebase Storage bucket |
-| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | FCM sender ID |
-| `NEXT_PUBLIC_FIREBASE_APP_ID` | Firebase app ID |
-| `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` | Google Analytics measurement ID (optional) |
-| `NEXT_PUBLIC_FIREBASE_DATABASE_URL` | Realtime Database URL |
-
-> ⚠️ Never commit `.env.local` to version control. It is already listed in `.gitignore`.
-
----
+- \`src/app\`: Next.js App Router pages and layouts.
+- \`src/components/landing\`: Modular UI components for the landing page (e.g., \`PricingSection\`, \`SandboxSection\`, \`IDEPreviewSection\`).
+- \`src/components/ui\`: Reusable UI elements and complex WebGL components like \`Lightfall\` and \`LightPillar\`.
+- \`src/hooks\`: Custom React hooks for authentication and state management.
 
 ## 📄 License
 
-MIT
+This project is licensed under the MIT License.

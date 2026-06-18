@@ -1,17 +1,15 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { X, Copy, Check, Globe, Lock, ShieldCheck, Users, ChevronDown, Link2, Pencil, Eye, Zap } from "lucide-react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { ref, onValue } from "firebase/database";
-import { db, rtdb } from "@/lib/firebase";
-import { useAuth } from "@/hooks/useAuth";
+import React, { useState, useEffect } from "react";
+import { X, Copy, Check, Globe, Lock, ChevronDown, Link2, Users } from "lucide-react";
+import { getCurrentSession } from "@/lib/aws-client";
 
 interface InviteModalProps {
-    isOpen: boolean;
+    isOpen?: boolean;
     onClose: () => void;
     workspaceId: string;
     workspaceTitle?: string;
+    collaborators?: any[];
 }
 
 function generateToken(): string {
@@ -19,10 +17,7 @@ function generateToken(): string {
     return Array.from({ length: 24 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTitle }: InviteModalProps) {
-    const { user } = useAuth();
-    const [collaborators, setCollaborators] = useState<any[]>([]);
-
+export default function InviteModal({ isOpen = true, onClose, workspaceId, workspaceTitle, collaborators = [] }: InviteModalProps) {
     // UI state for the unified share section
     const [accessMode, setAccessMode] = useState<'restricted' | 'public'>('public');
     const [selectedRole, setSelectedRole] = useState<'editor' | 'viewer'>('editor');
@@ -40,28 +35,37 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
     // Stored tokens
     const [editToken, setEditToken] = useState<string | null>(null);
     const [viewToken, setViewToken] = useState<string | null>(null);
-    const [generatingToken, setGeneratingToken] = useState<boolean>(false);
 
     const origin = typeof window !== "undefined" ? window.location.origin : "";
-
-    // Active link based on selected role
     const activeToken = selectedRole === 'editor' ? editToken : viewToken;
     const publicLink = activeToken ? `${origin}/workspace/${workspaceId}?token=${activeToken}` : null;
     const restrictedLink = `${origin}/workspace/${workspaceId}`;
-
     const activeLink = accessMode === 'public' ? publicLink : restrictedLink;
 
     const handleSendEmailInvite = async () => {
         if (!inviteEmail.trim()) return;
         setIsSendingInvite(true);
 
+        const session = getCurrentSession();
+        if (!session) {
+            setIsSendingInvite(false);
+            return;
+        }
+
         try {
             let token = activeToken;
             if (!token) {
                 token = generateToken();
                 const field = selectedRole === 'editor' ? 'editTokens' : 'viewTokens';
-                await updateDoc(doc(db, "workspaces", workspaceId), {
-                    [field]: [token],
+                await fetch(`/api/workspaces/${workspaceId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${session.idToken}`,
+                    },
+                    body: JSON.stringify({
+                        [field]: [token],
+                    }),
                 });
                 if (selectedRole === 'editor') setEditToken(token);
                 else setViewToken(token);
@@ -74,7 +78,7 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                 body: JSON.stringify({
                     email: inviteEmail,
                     link: linkToSend,
-                    inviter: user?.firstName || user?.email || 'Someone',
+                    inviter: 'Someone',
                     workspaceTitle: workspaceTitle || 'Untitled document',
                     role: selectedRole,
                 })
@@ -96,13 +100,20 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
 
     const copyLink = async () => {
         let linkToCopy = activeLink;
+        const session = getCurrentSession();
 
-        // Auto-generate if missing for public link
-        if (accessMode === 'public' && !activeToken) {
+        if (accessMode === 'public' && !activeToken && session) {
             const token = generateToken();
             const field = selectedRole === 'editor' ? 'editTokens' : 'viewTokens';
-            await updateDoc(doc(db, "workspaces", workspaceId), {
-                [field]: [token],
+            await fetch(`/api/workspaces/${workspaceId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.idToken}`,
+                },
+                body: JSON.stringify({
+                    [field]: [token],
+                }),
             });
             if (selectedRole === 'editor') setEditToken(token);
             else setViewToken(token);
@@ -119,15 +130,20 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
         }
     };
 
-    // Load workspace settings + tokens on open
+    // Load workspace tokens on open
     useEffect(() => {
-        if (!isOpen || !workspaceId) return;
+        const session = getCurrentSession();
+        if (!session || !workspaceId) return;
 
         const fetchSettings = async () => {
             try {
-                const snap = await getDoc(doc(db, "workspaces", workspaceId));
-                if (snap.exists()) {
-                    const data = snap.data();
+                const res = await fetch(`/api/workspaces/${workspaceId}`, {
+                    headers: {
+                        Authorization: `Bearer ${session.idToken}`,
+                    },
+                });
+                if (res.ok) {
+                    const data = await res.json();
                     const editTokens: string[] = data.editTokens || [];
                     const viewTokens: string[] = data.viewTokens || [];
                     if (editTokens.length > 0) setEditToken(editTokens[editTokens.length - 1]);
@@ -138,47 +154,11 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
             }
         };
         fetchSettings();
-
-        if (!rtdb) return;
-        const collaboratorsRef = ref(rtdb, `rooms/${workspaceId}/collaborators`);
-        const unsub = onValue(collaboratorsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                setCollaborators(Object.values(snapshot.val()));
-            } else {
-                setCollaborators([]);
-            }
-        });
-        return () => unsub();
-    }, [isOpen, workspaceId]);
-
-    const handleGenerateToken = async () => {
-        setGeneratingToken(true);
-        try {
-            const token = generateToken();
-            const field = selectedRole === 'editor' ? 'editTokens' : 'viewTokens';
-
-            const snap = await getDoc(doc(db, "workspaces", workspaceId));
-            const existing: string[] = snap.exists() ? (snap.data()[field] || []) : [];
-
-            await updateDoc(doc(db, "workspaces", workspaceId), {
-                [field]: [...existing.slice(-4), token], // Keep last 5 tokens max
-            });
-
-            if (selectedRole === 'editor') setEditToken(token);
-            else setViewToken(token);
-        } catch (err) {
-            console.error("Failed to generate token:", err);
-        } finally {
-            setGeneratingToken(false);
-        }
-    };
-
-    if (!isOpen) return null;
+    }, [workspaceId]);
 
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px]" onClick={(e) => e.target === e.currentTarget && onClose()}>
-            <div className="bg-white w-full max-w-[540px] rounded-2xl shadow-2xl overflow-hidden font-sans" style={{ animation: "modalIn 0.2s cubic-bezier(0.16,1,0.3,1)" }}>
-
+            <div className="bg-white w-full max-w-[540px] rounded-2xl shadow-2xl overflow-hidden font-sans animate-fade-in">
                 {/* Header */}
                 <div className="px-6 pt-5 pb-4">
                     <div className="flex items-start justify-between">
@@ -192,13 +172,13 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                 </div>
 
                 <div className="px-6 pb-6">
-                    {/* Real Email Input */}
+                    {/* Email Input */}
                     <div className="relative w-full mb-6">
                         <input
                             type="email"
                             value={inviteEmail}
                             onChange={(e) => setInviteEmail(e.target.value)}
-                            placeholder="Add people, groups, spaces and calendar events"
+                            placeholder="Add people via email address"
                             className="w-full border border-gray-300 rounded-[4px] px-3 py-3 text-sm text-gray-900 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder:text-gray-500"
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') handleSendEmailInvite();
@@ -215,28 +195,12 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                         )}
                     </div>
 
-                    {/* People with access */}
-                    <div className="mb-6">
-                        <h3 className="text-[15px] font-medium text-gray-800 mb-3">People with access</h3>
-
-                        {/* Owner Row */}
-                        <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                                <div className="w-9 h-9 rounded-full bg-[#4285F4] text-white flex items-center justify-center font-medium text-lg">
-                                    {(user?.firstName || user?.email || 'U').charAt(0).toUpperCase()}
-                                </div>
-                                <div className="flex flex-col">
-                                    <span className="text-[14px] font-medium text-gray-900">{user?.firstName ? `${user.firstName} ${user.lastName || ''}` : 'You'} (you)</span>
-                                    <span className="text-[12px] text-gray-500">{user?.email || 'user@example.com'}</span>
-                                </div>
-                            </div>
-                            <span className="text-[13px] text-gray-500 mr-2">Owner</span>
-                        </div>
-                        {/* Internal Collaborators (Realtime) */}
-                        <div className="space-y-1 overflow-y-auto max-h-[140px]">
-                            {collaborators
-                                .filter((c: any) => c.id !== user?.uid)
-                                .map((c: any) => (
+                    {/* Active Collaborators */}
+                    {collaborators.length > 0 && (
+                        <div className="mb-6">
+                            <h3 className="text-[15px] font-medium text-gray-800 mb-3">Active collaborators</h3>
+                            <div className="space-y-1 overflow-y-auto max-h-[140px]">
+                                {collaborators.map((c: any) => (
                                     <div key={c.id || c.username} className="flex items-center justify-between hover:bg-gray-50 p-1.5 -ml-1.5 rounded-lg transition-colors">
                                         <div className="flex items-center gap-3">
                                             <div
@@ -253,13 +217,13 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                                                 </span>
                                             </div>
                                         </div>
-                                        <span className="text-[13px] text-gray-500 mr-2 capitalize">{selectedRole}</span>
                                     </div>
                                 ))}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* General Access Google Docs Style */}
+                    {/* General Access */}
                     <div>
                         <h3 className="text-[15px] font-medium text-gray-800 mb-3">General access</h3>
                         <div className="flex items-start gap-4">
@@ -268,7 +232,6 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                             </div>
                             <div className="flex-1 mt-0.5">
                                 <div className="flex items-center gap-3">
-                                    {/* Access Mode Dropdown */}
                                     <div className="relative">
                                         <button
                                             onClick={() => { setAccessDropdownOpen(!accessDropdownOpen); setRoleDropdownOpen(false); }}
@@ -293,7 +256,6 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                                         )}
                                     </div>
 
-                                    {/* Role Dropdown */}
                                     {accessMode === 'public' && (
                                         <div className="relative ml-auto">
                                             <button
@@ -331,8 +293,8 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                     </div>
                 </div>
 
-                {/* Footer Buttons inline with Google Docs */}
-                <div className="px-6 py-4 flex items-center justify-between">
+                {/* Footer Buttons */}
+                <div className="px-6 py-4 flex items-center justify-between border-t border-gray-100">
                     <button
                         onClick={copyLink}
                         className="flex items-center gap-2 px-5 py-2 rounded-full border border-gray-300 text-[14px] font-medium text-blue-600 hover:bg-blue-50 transition-colors"
@@ -348,13 +310,6 @@ export default function InviteModal({ isOpen, onClose, workspaceId, workspaceTit
                     </button>
                 </div>
             </div>
-
-            <style jsx>{`
-                @keyframes modalIn {
-                    from { transform: scale(0.94) translateY(8px); opacity: 0; }
-                    to { transform: scale(1) translateY(0); opacity: 1; }
-                }
-            `}</style>
         </div>
     );
 }

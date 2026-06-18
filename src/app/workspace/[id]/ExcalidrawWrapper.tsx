@@ -5,16 +5,16 @@ import { useSearchParams } from "next/navigation";
 import { Excalidraw, MainMenu, convertToExcalidrawElements } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import Joyride, { STATUS, Step, CallBackProps } from "react-joyride";
-import { ArrowLeft, Mic, MicOff, Loader2, Sparkles, X, Trash2, History, Bot, User, Send, Play, Pause, Square, Cloud, CloudUpload, CloudOff, Share2, Users, Wifi, Copy } from "lucide-react";
+import { ArrowLeft, Mic, MicOff, Loader2, Sparkles, X, Trash2, History, Bot, User, Send, Play, Pause, Square, Cloud, CloudUpload, CloudOff, Share2, Users, Wifi, Copy, Code2, Zap } from "lucide-react";
 import type { LibraryItems, ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 
 import { useAISession, type AddNodePayload, type SessionStatus } from "@/hooks/useAISession";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
-import { ref, onValue, set, onDisconnect } from "firebase/database";
-import { db, rtdb } from "@/lib/firebase";
+import { getCurrentSession } from "@/lib/aws-client";
 import { useRouter } from "next/navigation";
 import InviteModal from "@/components/workspace/InviteModal";
+
+const BACKEND_WS = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // VISUAL DESIGN SYSTEM — rich per-type colours, shapes, strokes, arrows
@@ -997,14 +997,9 @@ export default function ExcalidrawWrapper({
 
     useEffect(() => {
         if (!isAssisted || !user) return;
-        const checkTour = async () => {
-            try {
-                const docSnap = await getDoc(doc(db, "users", user.uid));
-                const hasSeenTour = docSnap.data()?.hasSeenTour;
-                if (!hasSeenTour) setTimeout(() => setRunTour(true), 1000);
-            } catch (e) { console.warn("Failed to check tour status:", e); }
-        };
-        checkTour();
+        if (!user.hasSeenTour) {
+            setTimeout(() => setRunTour(true), 1000);
+        }
     }, [isAssisted, workspaceId, user]);
 
     const handleJoyrideCallback = async (data: CallBackProps) => {
@@ -1013,7 +1008,19 @@ export default function ExcalidrawWrapper({
             setRunTour(false);
             if (user) {
                 try {
-                    await setDoc(doc(db, "users", user.uid), { hasSeenTour: true }, { merge: true });
+                    const session = getCurrentSession();
+                    if (!session) return;
+                    await fetch("/api/users/profile", {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${session.idToken}`
+                        },
+                        body: JSON.stringify({
+                            ...user,
+                            hasSeenTour: true
+                        })
+                    });
                 } catch (e) { console.warn("Failed to save tour status:", e); }
             }
         }
@@ -1041,181 +1048,372 @@ export default function ExcalidrawWrapper({
     // ── Force-save: used after AI finishes a draw batch to persist immediately ─
     const forceSaveRef = React.useRef<(() => Promise<void>) | null>(null);
 
-    // ── Guard: block remote Firebase overwrites while AI is drawing ─────────
-    // If onSnapshot fires during an active draw batch, it would overwrite
-    // batchEls with a stale snapshot (missing nodes drawn since last save).
-    // We suppress remote updates while isDrawingRef or drawQueueRef has items.
-    useEffect(() => {
-        if (!workspaceId) return;
-        const unsub = onSnapshot(doc(db, "workspaces", workspaceId), (snap) => {
-            if (!snap.exists()) return;
-            const data = snap.data();
-            if (data.shareMode) setWorkspaceShareMode(data.shareMode as 'editor' | 'viewer');
-            // Skip remote update if:
-            // 1. We just saved it ourselves (isRemoteUpdateRef)
-            // 2. AI is actively drawing nodes (isDrawingRef or queue has items)
-            // Block remote overwrites if:
-            // 1. We just saved it ourselves (data.elements matches what we last saved)
-            // 2. AI is actively drawing right now
-            // 3. A draw happened within the last 8 seconds (covers inter-node gaps)
-            const aiIsDrawing = isDrawingRef.current || drawQueueRef.current.length > 0;
-            const recentlyDrawn = (Date.now() - lastDrawTimeRef.current) < 8000;
-            const isOwnSave = data.elements === lastSavedElementsStringRef.current;
+    // ── Guard: block saves until the canvas has been properly restored ────────
+    const canSaveRef = React.useRef(false);
+    
+    const roomWsRef = React.useRef<WebSocket | null>(null);
 
-            if (!isOwnSave && !aiIsDrawing && !recentlyDrawn && data.elements) {
-                const parsedElements = JSON.parse(data.elements);
-                const api = excalidrawRef.current;
-                if (api) {
-                    // Update scene only if the remote elements actually changed
-                    api.updateScene({ elements: parsedElements });
-                    // Also update our local ref so we don't re-trigger unnecessarily
-                    lastSavedElementsStringRef.current = data.elements;
+    useEffect(() => {
+        if (!workspaceId || !user) return;
+        
+        let ws: WebSocket | null = null;
+        let retryCount = 0;
+        let isStopped = false;
+
+        const connectRoomWs = () => {
+            if (isStopped) return;
+            const session = getCurrentSession();
+            const tokenParam = session?.idToken ? `?token=${encodeURIComponent(session.idToken)}` : "";
+            const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
+            const host = BACKEND_WS.replace(/^https?:/, "").replace(/^\/\//, "");
+            const url = `${wsProto}//${host}/ws/room/${encodeURIComponent(workspaceId)}/${user.uid}${tokenParam}`;
+            
+            ws = new WebSocket(url);
+            roomWsRef.current = ws;
+
+            ws.onopen = () => {
+                console.log("[FlowState] Room WebSocket connected.");
+                retryCount = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === "collaborator_update") {
+                        setActiveCollaborators((prev) => {
+                            const filtered = prev.filter(c => c.id !== msg.id);
+                            const updatedList = [...filtered, msg];
+                            
+                            const collaboratorsMap = new Map<string, any>();
+                            updatedList.forEach((collab) => {
+                                if (collab.id !== user.uid) {
+                                    collaboratorsMap.set(collab.id, {
+                                        ...collab,
+                                        color: collab.color || { background: '#3b82f6', stroke: '#1d4ed8' },
+                                        selectedElementIds: collab.selectedElementIds || {},
+                                        username: collab.username || 'Anonymous',
+                                    });
+                                }
+                            });
+                            if (excalidrawRef.current) {
+                                excalidrawRef.current.updateScene({ collaborators: collaboratorsMap as any });
+                            }
+                            return updatedList;
+                        });
+                    } else if (msg.type === "collaborator_left") {
+                        setActiveCollaborators((prev) => {
+                            const updatedList = prev.filter(c => c.id !== msg.id);
+                            const collaboratorsMap = new Map<string, any>();
+                            updatedList.forEach((collab) => {
+                                if (collab.id !== user.uid) {
+                                    collaboratorsMap.set(collab.id, {
+                                        ...collab,
+                                        color: collab.color || { background: '#3b82f6', stroke: '#1d4ed8' },
+                                        selectedElementIds: collab.selectedElementIds || {},
+                                        username: collab.username || 'Anonymous',
+                                    });
+                                }
+                            });
+                            if (excalidrawRef.current) {
+                                excalidrawRef.current.updateScene({ collaborators: collaboratorsMap as any });
+                            }
+                            return updatedList;
+                        });
+                    } else if (msg.type === "canvas_update") {
+                        const aiIsDrawing = isDrawingRef.current || drawQueueRef.current.length > 0;
+                        const recentlyDrawn = (Date.now() - lastDrawTimeRef.current) < 8000;
+                        
+                        if (!aiIsDrawing && !recentlyDrawn && msg.elements) {
+                            const api = excalidrawRef.current;
+                            if (api) {
+                                api.updateScene({ elements: msg.elements });
+                                lastSavedElementsStringRef.current = JSON.stringify(msg.elements);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing room websocket message:", e);
                 }
-            }
-        });
-        return () => unsub();
-    }, [workspaceId]);
+            };
+
+            ws.onclose = () => {
+                console.log("[FlowState] Room WebSocket closed.");
+                if (!isStopped) {
+                    const delay = Math.min(1000 * Math.pow(2, retryCount), 15000);
+                    retryCount++;
+                    setTimeout(connectRoomWs, delay);
+                }
+            };
+
+            ws.onerror = (e) => {
+                console.error("[FlowState] Room WebSocket error:", e);
+                ws?.close();
+            };
+        };
+
+        connectRoomWs();
+
+        return () => {
+            isStopped = true;
+            if (ws) ws.close();
+            roomWsRef.current = null;
+        };
+    }, [workspaceId, user]);
 
     const selectedElementsRef = React.useRef<Record<string, boolean>>({});
 
     const handlePointerUpdate = (payload: any) => {
-        if (!user || !workspaceId || !rtdb) return;
+        if (!user || !workspaceId) return;
         const { pointer, button, key } = payload;
         if (!pointer) return;
         const userColor = uidToColor(user.uid);
-        const presenceRef = ref(rtdb, `rooms/${workspaceId}/collaborators/${user.uid}`);
-        set(presenceRef, {
-            id: user.uid,
-            username: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : (user.email?.split('@')[0] || "Anonymous"),
-            pointer, button: button || null, key: key || null, color: userColor,
-            selectedElementIds: selectedElementsRef.current,
-            lastSeen: Date.now(),
-        });
-    };
-
-    useEffect(() => {
-        if (!workspaceId || !rtdb) return;
-        const collaboratorsRef = ref(rtdb, `rooms/${workspaceId}/collaborators`);
-        const unsub = onValue(collaboratorsRef, (snapshot) => {
-            if (snapshot.exists()) {
-                const data = snapshot.val();
-                const collaboratorsMap = new Map<string, any>();
-                const collaboratorsList: any[] = [];
-                Object.entries(data).forEach(([uid, collab]: [string, any]) => {
-                    collaboratorsList.push(collab);
-                    if (uid !== user?.uid) {
-                        collaboratorsMap.set(uid, {
-                            ...collab,
-                            color: collab.color || { background: '#3b82f6', stroke: '#1d4ed8' },
-                            selectedElementIds: collab.selectedElementIds || {},
-                            username: collab.username || 'Anonymous',
-                        });
-                    }
-                });
-                setActiveCollaborators(collaboratorsList);
-                if (excalidrawRef.current) excalidrawRef.current.updateScene({ collaborators: collaboratorsMap as any });
-            } else {
-                setActiveCollaborators([]);
-                if (excalidrawRef.current) excalidrawRef.current.updateScene({ collaborators: new Map() });
-            }
-        });
-        if (user?.uid) {
-            const myPresenceRef = ref(rtdb, `rooms/${workspaceId}/collaborators/${user.uid}`);
-            onDisconnect(myPresenceRef).remove();
+        
+        if (roomWsRef.current && roomWsRef.current.readyState === WebSocket.OPEN) {
+            roomWsRef.current.send(JSON.stringify({
+                type: "collaborator_update",
+                id: user.uid,
+                username: user.firstName ? `${user.firstName} ${user.lastName || ""}`.trim() : (user.email?.split('@')[0] || "Anonymous"),
+                pointer,
+                button: button || null,
+                key: key || null,
+                color: userColor,
+                selectedElementIds: selectedElementsRef.current,
+                lastSeen: Date.now(),
+            }));
         }
-        return () => unsub();
-    }, [workspaceId, user?.uid]);
+    };
 
     // ── Core save function — always reads fresh from API, never a stale closure ─
     const doSave = React.useCallback(async () => {
-        console.log("[FlowState] 🔄 doSave() called.");
-        if (!user || !workspaceId) {
-            console.log("[FlowState] 🛑 doSave() aborted: Missing user or workspaceId", { hasUser: !!user, workspaceId });
+        if (!canSaveRef.current) {
+            console.log("[FlowState] 🛑 doSave() aborted: canvas not yet restored.");
             return;
         }
+        if (!user || !workspaceId) return;
         const api = excalidrawRef.current;
-        if (!api) {
-            console.log("[FlowState] 🛑 doSave() aborted: excalidrawRef.current is null.");
-            return;
-        }
+        if (!api) return;
         try {
-            // Always get latest elements directly from the API to avoid stale closures
             const liveElements = api.getSceneElements().filter((e: any) => !e.isDeleted);
             const liveAppState = api.getAppState() as any;
             const elementsString = JSON.stringify(liveElements);
             
-            // Don't save if nothing has changed since last save
-            if (elementsString === lastSavedElementsStringRef.current) {
-                console.log("[FlowState] 🛑 doSave() aborted: No changes detected. Canvas matches last saved state.");
-                return;
-            }
+            if (elementsString === lastSavedElementsStringRef.current) return;
             
-            console.log(`[FlowState] 🚀 doSave() proceeding to save ${liveElements.length} elements to Firebase workspaces/${workspaceId}. isOwner: ${isOwner}`);
+            console.log(`[FlowState] 💾 Saving ${liveElements.length} elements to AWS...`);
             setSyncStatus('saving');
             const { collaborators, currentHoveredGroupId, selectedElementIds: _sel, ...safeAppState } = liveAppState;
             
-            await setDoc(doc(db, "workspaces", workspaceId), {
-                elements: elementsString,
-                appState: JSON.stringify(safeAppState),
-                ...(isOwner ? { userId: user.uid } : {}),
-                updatedAt: new Date().toISOString(),
-            }, { merge: true });
+            const session = getCurrentSession();
+            if (!session) return;
+
+            const res = await fetch(`/api/workspaces/${workspaceId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.idToken}`
+                },
+                body: JSON.stringify({
+                    elements: elementsString,
+                    appState: JSON.stringify(safeAppState),
+                    updatedAt: new Date().toISOString()
+                })
+            });
+
+            if (!res.ok) throw new Error("API request failed");
             
             lastSavedElementsStringRef.current = elementsString;
             setSyncStatus('saved');
-            console.log('[FlowState] ✅ Successfully Saved', liveElements.length, 'elements to Firebase!');
+            
+            if (roomWsRef.current && roomWsRef.current.readyState === WebSocket.OPEN) {
+                roomWsRef.current.send(JSON.stringify({
+                    type: "canvas_update",
+                    elements: liveElements,
+                    appState: safeAppState
+                }));
+            }
+
+            try {
+                localStorage.setItem(`workspace_elements_${workspaceId}`, elementsString);
+                localStorage.setItem(`workspace_appstate_${workspaceId}`, JSON.stringify(safeAppState));
+            } catch (e) { }
+            console.log('[FlowState] ✅ Saved', liveElements.length, 'elements to AWS + localStorage.');
         } catch (e) {
             console.error("[FlowState] ❌ Failed to sync workspace canvas:", e);
             setSyncStatus('error');
         }
     }, [user, workspaceId, isOwner, excalidrawRef]); // eslint-disable-line
 
-    // Keep the forceSaveRef always pointing to the latest doSave
     React.useEffect(() => { forceSaveRef.current = doSave; }, [doSave]);
 
     const handleSceneChange = (elements: readonly any[], appState: any) => {
         if (!user || !workspaceId) return;
+        if (!canSaveRef.current) return;
         if (appState.selectedElementIds) selectedElementsRef.current = appState.selectedElementIds;
-        // Debounce — clear previous timer and schedule a fresh save
         if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
-        const elementsString = JSON.stringify(elements.filter((e: any) => !e.isDeleted));
-        if (elementsString !== lastSavedElementsStringRef.current) {
-            console.log("[FlowState] 🔄 handleSceneChange() detected differences. Starting 3s debounce to execute doSave().");
-        }
-        syncTimeoutRef.current = setTimeout(() => doSave(), 3000); // 3s debounce
+        syncTimeoutRef.current = setTimeout(() => doSave(), 3000);
     };
 
     const otherCollaborators = activeCollaborators.filter(c => c.id !== user?.uid);
     const router = useRouter();
 
+    const handleGenerateArtifact = async () => {
+        const api = excalidrawRef.current;
+        if (!api) return;
+
+        const elements = api.getSceneElements().filter((e: any) => !e.isDeleted);
+        if (elements.length === 0) {
+            alert("Canvas is empty. Draw something first before generating code!");
+            return;
+        }
+
+        try {
+            const { exportToBlob } = await import("@excalidraw/excalidraw");
+            // 1. Export Thumbnail
+            const blob = await exportToBlob({
+                elements,
+                appState: { ...api.getAppState(), exportWithDarkMode: false },
+                files: api.getFiles(),
+                mimeType: "image/jpeg",
+                quality: 0.8,
+            });
+
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = () => {
+                const base64data = reader.result;
+
+                // 2. Build Semantic Graph
+                const nodes: any[] = elements.filter((e: any) => e.type !== "arrow" && e.type !== "text");
+                const texts: any[] = elements.filter((e: any) => e.type === "text" && e.containerId);
+                const arrows: any[] = elements.filter((e: any) => e.type === "arrow");
+
+                const graph = nodes.map((node: any) => {
+                    const label = texts.find((t: any) => t.containerId === node.id)?.text || "Unknown";
+                    
+                    const outgoingArrows = arrows.filter((a: any) => a.startBinding?.elementId === node.id);
+                    const connectedTo = outgoingArrows.map((a: any) => {
+                        const targetId = a.endBinding?.elementId;
+                        const targetNode = nodes.find((n: any) => n.id === targetId);
+                        const targetLabel = texts.find((t: any) => t.containerId === targetId)?.text || "Unknown";
+                        
+                        // Find text bound to the arrow itself
+                        let edgeLabelText = "";
+                        if (a.boundElements) {
+                            const boundTextEl = a.boundElements.find((b: any) => b.type === "text");
+                            if (boundTextEl) {
+                                edgeLabelText = texts.find((t: any) => t.id === boundTextEl.id)?.text || "";
+                            } else {
+                                // Excalidraw text might not be a container text for arrows in some versions, but rather a direct text element.
+                                const rawText: any = elements.find((e: any) => e.id === boundTextEl?.id);
+                                if (rawText) edgeLabelText = rawText.text;
+                            }
+                        }
+
+                        return {
+                            targetId,
+                            targetLabel,
+                            edgeLabel: edgeLabelText
+                        };
+                    });
+
+                    return {
+                        id: node.id,
+                        type: node.type,
+                        shape: node.shape || "box",
+                        label,
+                        connections: connectedTo
+                    };
+                });
+
+                // Store in sessionStorage to pass to the next page
+                sessionStorage.setItem(`generationData_${workspaceId}`, JSON.stringify({
+                    thumbnail: base64data,
+                    graph: graph,
+                    workspaceTitle: workspaceTitle || "Untitled"
+                }));
+
+                router.push(`/workspace/${workspaceId}/generate`);
+            };
+        } catch (e) {
+            console.error("[FlowState] Failed to prepare generation:", e);
+            alert("Failed to prepare generation.");
+        }
+    };
+
     const handleSaveACopy = async () => {
         if (!user || !excalidrawRef.current) return;
         try {
-            const newId = Math.random().toString(36).substring(2, 9);
+            const newId = Math.random().toString(36).substring(2, 10);
             const api = excalidrawRef.current;
             const elements = api.getSceneElements();
             const appState = api.getAppState();
             const { collaborators: _c, currentHoveredGroupId: _h, selectedElementIds: _s, ...safeAppState } = appState as any;
             const title = `${workspaceTitle || 'Untitled'} (copy)`;
-            await setDoc(doc(db, "workspaces", newId), {
-                userId: user.uid, title, elements: JSON.stringify(elements),
-                appState: JSON.stringify(safeAppState), createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(), shareMode: 'editor',
-                editTokens: [], viewTokens: [], forkedFrom: workspaceId,
+            
+            const session = getCurrentSession();
+            if (!session) return;
+            
+            const createRes = await fetch("/api/workspaces", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.idToken}`
+                },
+                body: JSON.stringify({
+                    workspaceId: newId,
+                    title,
+                    subtitle: "Personal Workspace Copy"
+                })
             });
-            await setDoc(doc(db, "userWorkspaces", user.uid, "items", newId), {
-                workspaceId: newId, role: 'owner', title, updatedAt: new Date().toISOString(),
-            }, { merge: true });
+            
+            if (!createRes.ok) throw new Error("Failed to create copy");
+            
+            const updateRes = await fetch(`/api/workspaces/${newId}`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.idToken}`
+                },
+                body: JSON.stringify({
+                    elements: JSON.stringify(elements),
+                    appState: JSON.stringify(safeAppState)
+                })
+            });
+            
+            if (!updateRes.ok) throw new Error("Failed to update copy content");
+            
             router.push(`/workspace/${newId}`);
         } catch (e) {
             console.error("[FlowState] Failed to save a copy:", e);
+            alert("Failed to save a copy.");
         }
     };
 
     return (
         <div style={{ height: "100%", width: "100%", position: "relative" }}>
             <Excalidraw
-                excalidrawAPI={(api) => { excalidrawRef.current = api; }}
+                excalidrawAPI={(api) => {
+                  excalidrawRef.current = api;
+                  if (initialElements && initialElements.length > 0) {
+                    // Restore saved canvas — then enable saves
+                    setTimeout(() => {
+                      try {
+                        api.updateScene({ elements: initialElements });
+                        lastSavedElementsStringRef.current = JSON.stringify(initialElements);
+                        api.scrollToContent(api.getSceneElements(), { animate: false, fitToContent: true });
+                        console.log(`[FlowState] 🖼️ Restored ${initialElements.length} elements. Saves now enabled.`);
+                      } catch (e) {
+                        console.warn("[FlowState] onMount updateScene failed:", e);
+                      } finally {
+                        canSaveRef.current = true;
+                      }
+                    }, 300);
+                  } else {
+                    // Fresh/empty canvas — enable saves immediately
+                    canSaveRef.current = true;
+                    console.log("[FlowState] 🆕 Fresh canvas. Saves enabled.");
+                  }
+                }}
                 viewModeEnabled={!canEdit}
                 initialData={{
                     elements: initialElements || [],
@@ -1226,38 +1424,50 @@ export default function ExcalidrawWrapper({
                 onLibraryChange={onLibraryChange}
                 onPointerUpdate={handlePointerUpdate}
                 renderTopRightUI={() => (
-                    <div className="flex gap-3 items-center mr-2 pointer-events-auto">
+                    <div className="flex gap-1.5 sm:gap-3 items-center mr-1 sm:mr-2 pointer-events-auto">
                         <CollaboratorStack collaborators={activeCollaborators} currentUid={user?.uid} />
+                        
+                        {/* Sync + Share pill */}
                         <div className="flex items-center bg-[#ececf4] rounded-lg shadow-sm border border-transparent translate-y-[2px] overflow-hidden">
                             {syncStatus && (
                                 <>
-                                    <div className="flex items-center gap-2 px-3 py-2 text-[#1b1b1f] text-[13px] font-medium transition-all duration-300">
-                                        {syncStatus === 'saving' && <CloudUpload size={15} className="animate-pulse text-blue-500" />}
-                                        {syncStatus === 'saved' && <Cloud size={15} className="text-green-500" />}
-                                        {syncStatus === 'error' && <CloudOff size={15} className="text-red-500" />}
-                                        <span className="whitespace-nowrap text-[12px]">
-                                            {syncStatus === 'saving' ? 'Syncing…' : syncStatus === 'saved' ? 'Saved' : 'Sync Error'}
+                                    <div className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-[#1b1b1f] text-[13px] font-medium transition-all duration-300">
+                                        {syncStatus === 'saving' && <CloudUpload size={15} className="animate-pulse text-blue-500 shrink-0" />}
+                                        {syncStatus === 'saved'  && <Cloud size={15} className="text-green-500 shrink-0" />}
+                                        {syncStatus === 'error'  && <CloudOff size={15} className="text-red-500 shrink-0" />}
+                                        <span className="hidden sm:inline whitespace-nowrap text-[12px]">
+                                            {syncStatus === 'saving' ? 'Syncing…' : syncStatus === 'saved' ? 'Saved' : 'Error'}
                                         </span>
                                     </div>
-                                    {isOwner && <div className="w-[1px] h-4 bg-gray-400/30" />}
+                                    <div className="w-[1px] h-4 bg-gray-400/30" />
                                 </>
                             )}
                             {otherCollaborators.length > 0 && !syncStatus && (
                                 <>
-                                    <div className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-green-600">
-                                        <Wifi size={13} className="text-green-500" /><span>Live</span>
+                                    <div className="flex items-center gap-1.5 px-2 sm:px-3 py-2 text-[12px] font-medium text-green-600">
+                                        <Wifi size={13} className="text-green-500 shrink-0" />
+                                        <span className="hidden sm:inline">Live</span>
                                     </div>
-                                    {isOwner && <div className="w-[1px] h-4 bg-gray-400/30" />}
+                                    <div className="w-[1px] h-4 bg-gray-400/30" />
                                 </>
                             )}
-                            {isOwner && (
-                                <button onClick={() => setIsInviteModalOpen(true)}
-                                    className={`flex items-center gap-2 px-3 py-2 text-[#1b1b1f] text-[13px] font-medium hover:bg-[#e4e4f0] transition-all active:scale-95 ${!syncStatus && otherCollaborators.length === 0 ? 'rounded-lg' : ''}`}
-                                    title="Share workspace">
-                                    <Share2 size={15} strokeWidth={2} /><span>Share</span>
-                                </button>
-                            )}
+                            <button onClick={() => setIsInviteModalOpen(true)}
+                                className={`flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 text-[#1b1b1f] text-[13px] font-medium hover:bg-[#e4e4f0] transition-all active:scale-95 ${!syncStatus && otherCollaborators.length === 0 ? 'rounded-lg' : ''}`}
+                                title="Share workspace">
+                                <Share2 size={15} strokeWidth={2} className="shrink-0" />
+                                <span className="hidden sm:inline">Share</span>
+                            </button>
                         </div>
+
+                        {/* Generate Artifact button */}
+                        <button
+                            onClick={handleGenerateArtifact}
+                            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 ml-0.5 sm:ml-1 rounded-lg text-white font-medium text-[13px] transition-all active:scale-95 border border-white/20 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-600"
+                            title="Generate Code & Documentation"
+                        >
+                            <Zap size={15} className="text-indigo-100 shrink-0" />
+                            <span className="hidden sm:inline whitespace-nowrap">Generate Artifact</span>
+                        </button>
                     </div>
                 )}
             >

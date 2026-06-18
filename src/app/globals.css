@@ -24,7 +24,7 @@ body {
     color: var(--foreground);
     background: var(--background);
     font-family: var(--font-google-sans);
-    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 /* Background animation and styling to match the screenshot */
@@ -83,4 +83,26 @@ body {
             #4caf50);
     background-size: 400% 400%;
     animation: gemini-spin 10s ease infinite;
+}
+
+/* Custom Liquid Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0a0a0c;
+}
+::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #6366f1, #a855f7);
+    border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #4f46e5, #9333ea);
+}
+
+/* Firefox scrollbar support */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #6366f1 #0a0a0c;
 }

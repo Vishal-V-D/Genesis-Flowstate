@@ -1,11 +1,11 @@
 "use client";
+
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, Monitor, Bell, Palette, Globe, Shield, CreditCard, ChevronRight, Wand2 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { getCurrentSession } from '@/lib/aws-client';
 
 export default function SettingsPage() {
     const router = useRouter();
@@ -24,11 +24,21 @@ export default function SettingsPage() {
 
         if (user) {
             try {
-                await updateDoc(doc(db, "users", user.uid), {
-                    hoverStyle: value
+                const session = getCurrentSession();
+                if (!session) return;
+
+                await fetch("/api/users/profile", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${session.idToken}`,
+                    },
+                    body: JSON.stringify({
+                        hoverStyle: value,
+                    }),
                 });
             } catch (err) {
-                console.error("Error saving setting to Firestore:", err);
+                console.error("Error saving setting:", err);
             }
         }
     };
@@ -41,7 +51,7 @@ export default function SettingsPage() {
         { icon: <Bell className="w-5 h-5 text-google-yellow" />, title: "Notifications", desc: "Emails, alerts, and collaborate pings", color: "bg-yellow-50" },
         { icon: <Shield className="w-5 h-5 text-google-green" />, title: "Privacy & Data", desc: "Manage how your workspace data is used", color: "bg-green-50" },
         { icon: <Globe className="w-5 h-5 text-gray-600" />, title: "Integrations", desc: "Connect GitHub, Jira, and Slack", color: "bg-gray-100" },
-        { icon: <CreditCard className="w-5 h-5 text-purple-600" />, title: "Billing & Plans", desc: "Upgrade to Kira Pro or manage team seats", color: "bg-purple-50" },
+        { icon: <CreditCard className="w-5 h-5 text-purple-600" />, title: "Billing & Plans", desc: "Upgrade to Genesis Pro or manage team seats", color: "bg-purple-50" },
     ];
 
     return (

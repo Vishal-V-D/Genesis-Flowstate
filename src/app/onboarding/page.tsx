@@ -1,11 +1,11 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Briefcase, GraduationCap, Code2, Bug, BookOpen, Layers } from "lucide-react";
+import { User, Briefcase, GraduationCap, Code2, BookOpen, Layers } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getCurrentSession } from "@/lib/aws-client";
 
 type Step = 1 | 2;
 
@@ -36,7 +36,7 @@ export default function Onboarding() {
         // Wait a beat for animation
         await new Promise(resolve => setTimeout(resolve, 600));
 
-        // Save to Firestore
+        // Save to DynamoDB
         if (user) {
             try {
                 const onboardingData = {
@@ -44,7 +44,17 @@ export default function Onboarding() {
                     primaryGoal: goal,
                     completedAt: new Date().toISOString()
                 };
-                await updateDoc(doc(db, "users", user.uid), { onboardingData });
+                const session = getCurrentSession();
+                if (session) {
+                    await fetch("/api/users/profile", {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${session.idToken}`,
+                        },
+                        body: JSON.stringify({ onboardingData }),
+                    });
+                }
             } catch (err) {
                 console.error("Failed to save onboarding data:", err);
             }
@@ -61,7 +71,17 @@ export default function Onboarding() {
                     skipped: true,
                     completedAt: new Date().toISOString()
                 };
-                await updateDoc(doc(db, "users", user.uid), { onboardingData });
+                const session = getCurrentSession();
+                if (session) {
+                    await fetch("/api/users/profile", {
+                        method: "PUT",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${session.idToken}`,
+                        },
+                        body: JSON.stringify({ onboardingData }),
+                    });
+                }
             } catch (err) {
                 console.error("Failed to save skip state:", err);
             }
@@ -77,15 +97,17 @@ export default function Onboarding() {
             <div className="w-full max-w-[600px] z-10">
                 <div className="flex justify-center mb-8">
                     <div className="flex bg-white shadow-sm rounded-lg p-1.5 px-3 border border-gray-100">
-                        <span className="text-google-blue font-[400] text-2xl">K</span>
+                        <span className="text-google-blue font-[400] text-2xl">G</span>
+                        <span className="text-google-red font-[400] text-2xl">e</span>
+                        <span className="text-google-yellow font-[400] text-2xl">n</span>
+                        <span className="text-google-green font-[400] text-2xl">e</span>
+                        <span className="text-google-blue font-[400] text-2xl">s</span>
                         <span className="text-google-red font-[400] text-2xl">i</span>
-                        <span className="text-google-yellow font-[400] text-2xl">r</span>
-                        <span className="text-google-green font-[400] text-2xl">a</span>
+                        <span className="text-google-yellow font-[400] text-2xl">s</span>
                     </div>
                 </div>
 
                 <div className="bg-white rounded-[32px] shadow-[0_8px_40px_rgba(0,0,0,0.04)] border border-gray-100 p-8 sm:p-12 relative overflow-hidden min-h-[450px]">
-
                     {/* Progress indicator */}
                     <div className="absolute top-0 left-0 w-full h-1 bg-gray-100">
                         <motion.div
@@ -108,7 +130,7 @@ export default function Onboarding() {
                             >
                                 <div className="mb-8 text-center">
                                     <h1 className="text-3xl font-[400] text-gray-900 mb-3">Welcome to FlowState, {user?.firstName || 'there'}!</h1>
-                                    <p className="text-gray-500 text-lg">How are you planning to use Kira?</p>
+                                    <p className="text-gray-500 text-lg">How are you planning to use Genesis?</p>
                                 </div>
 
                                 <div className="grid grid-cols-1 gap-4 mt-auto">

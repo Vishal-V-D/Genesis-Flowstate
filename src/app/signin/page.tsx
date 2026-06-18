@@ -3,9 +3,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import { signInWithEmailAndPassword } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { signInUser } from "@/lib/aws-client";
 
 export default function SignIn() {
     const router = useRouter();
@@ -26,7 +24,6 @@ export default function SignIn() {
             return;
         }
 
-        // Basic validation
         if (!/\S+@\S+\.\S+/.test(email)) {
             setError("Please enter a valid email address");
             setIsLoading(false);
@@ -34,22 +31,24 @@ export default function SignIn() {
         }
 
         try {
-            const userCredential = await signInWithEmailAndPassword(auth, email, password);
-            const user = userCredential.user;
-
-            // Fetch additional profile data from Firestore
-            const userDoc = await getDoc(doc(db, "users", user.uid));
-            let userData = { uid: user.uid, email: user.email };
-
-            if (userDoc.exists()) {
-                userData = { ...userData, ...userDoc.data() };
-            }
-
+            await signInUser(email, password);
             setIsLoading(false);
             router.push("/library");
         } catch (err: any) {
             console.error("Sign in error:", err);
-            setError("Invalid email or password. Please try again.");
+            // Translate Cognito errors
+            let msg = "Invalid email or password. Please try again.";
+            if (err.name === "UserNotConfirmedException") {
+                msg = "Please confirm your sign up by verifying your email first.";
+                // We could redirect to a confirmation screen here if needed:
+                router.push(`/signup?confirm=true&email=${encodeURIComponent(email)}`);
+                return;
+            } else if (err.name === "UserNotFoundException") {
+                msg = "User account does not exist. Please register first.";
+            } else if (err.name === "NotAuthorizedException") {
+                msg = "Incorrect username or password. Please try again.";
+            }
+            setError(msg);
             setIsLoading(false);
         }
     };
@@ -58,7 +57,7 @@ export default function SignIn() {
         <div className="min-h-screen bg-[#f0f4f9] flex items-center justify-center p-4 selection:bg-google-blue/20">
             <div className="w-full max-w-[450px] bg-white rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.06)] p-10 border border-gray-100 flex flex-col pt-12">
                 <div className="flex justify-center mb-6">
-                    <div className="flex  rounded-sm p-1 px-2">
+                    <div className="flex rounded-sm p-1 px-2">
                         <span className="text-google-blue font-[300] text-xl">K</span>
                         <span className="text-google-red font-[300] text-xl">i</span>
                         <span className="text-google-yellow font-[300] text-xl">r</span>
@@ -86,7 +85,7 @@ export default function SignIn() {
                             onChange={(e) => setEmail(e.target.value)}
                         />
                         <label className="absolute left-4 top-4 text-gray-500 text-[15px] pointer-events-none transition-all peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-google-blue peer-focus:bg-white peer-focus:px-1 peer-valid:-top-2.5 peer-valid:text-xs peer-valid:bg-white peer-valid:px-1 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:-top-2.5 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:text-xs [&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-white [&:not(:empty)]:peer-[:not(:placeholder-shown)]:px-1">
-                            Email or phone
+                            Email address
                         </label>
                     </div>
 

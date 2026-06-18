@@ -4,17 +4,13 @@
  * NewWorkspaceModal.tsx
  *
  * Modal shown when the user clicks "New Workspace".
- * Presents two modes:
- *   • Personal — blank canvas, no AI
- *   • With AI Assistance — starts Gemini Live session (mic + screen)
  */
 
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, User, Sparkles, Mic, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { doc, setDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { getCurrentSession } from "@/lib/aws-client";
 
 interface Props {
     onClose: () => void;
@@ -27,7 +23,7 @@ export default function NewWorkspaceModal({ onClose }: Props) {
     const [title, setTitle] = useState("");
 
     const generateProfessionalId = () => {
-        const chars = '0123456780abcdef'; // Sleek hex-like
+        const chars = '0123456789abcdef';
         let result = '';
         for (let i = 0; i < 8; i++) {
             result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -37,13 +33,28 @@ export default function NewWorkspaceModal({ onClose }: Props) {
 
     const createWorkspaceDoc = async (id: string, mode: string) => {
         if (!user) return;
-        await setDoc(doc(db, "workspaces", id), {
-            userId: user.uid,
-            title: title.trim() || "Untitled Architecture",
-            subtitle: mode === "assisted" ? "AI Assisted Session" : "Personal Workspace",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-        });
+        const session = getCurrentSession();
+        if (!session) return;
+
+        try {
+            const res = await fetch("/api/workspaces", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${session.idToken}`,
+                },
+                body: JSON.stringify({
+                    workspaceId: id,
+                    title: title.trim() || "Untitled Architecture",
+                    subtitle: mode === "assisted" ? "AI Assisted Session" : "Personal Workspace",
+                }),
+            });
+            if (!res.ok) {
+                console.error("Failed to create workspace in DB");
+            }
+        } catch (e) {
+            console.error("Error creating workspace:", e);
+        }
     };
 
     // Personal mode — just open the canvas
@@ -106,8 +117,7 @@ export default function NewWorkspaceModal({ onClose }: Props) {
 
                 {/* Two mode cards */}
                 <div className="grid grid-cols-2 gap-4">
-
-                    {/* ── Personal mode ────────────────────────────────── */}
+                    {/* Personal mode */}
                     <button
                         onClick={openPersonal}
                         disabled={loading}
@@ -124,13 +134,12 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                         </p>
                     </button>
 
-                    {/* ── AI-Assisted mode ─────────────────────────────── */}
+                    {/* AI-Assisted mode */}
                     <button
                         onClick={openAssisted}
                         disabled={loading}
                         className="group flex flex-col items-start p-6 rounded-2xl border-2 border-[#536ea1] bg-[#536ea1]/5 hover:bg-[#536ea1]/10 transition-all text-left relative overflow-hidden"
                     >
-                        {/* Subtle glow pulse */}
                         <div className="absolute inset-0 bg-gradient-to-br from-[#536ea1]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
 
                         <div className="w-11 h-11 rounded-2xl bg-[#536ea1] flex items-center justify-center mb-4 shadow-md">
@@ -147,7 +156,6 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                             FlowState AI joins as your architect. Speak naturally, it draws.
                         </p>
 
-                        {/* Permission callout — mic only */}
                         <div className="flex items-center gap-2 mt-auto">
                             <span className="flex items-center gap-1 text-[10px] font-medium text-[#536ea1]/70">
                                 <Mic className="w-3 h-3" /> Microphone only
@@ -156,7 +164,6 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                     </button>
                 </div>
 
-                {/* Fine print */}
                 <p className="mt-6 text-xs text-gray-400 text-center">
                     AI Assistance only needs your microphone — no screen sharing required.
                 </p>

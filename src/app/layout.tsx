@@ -3,8 +3,11 @@ import "./globals.css";
 import NextTopLoader from 'nextjs-toploader';
 
 export const metadata: Metadata = {
-    title: "Kira FlowState | Build the new way",
+    title: "Genesis FlowState | Build the new way",
     description: "Experience it all with the next-generation whiteboarding tool",
+    icons: {
+        icon: "/logo.png",
+    },
 };
 
 export default function RootLayout({
@@ -15,6 +18,7 @@ export default function RootLayout({
     return (
         <html lang="en">
             <head>
+                <link rel="icon" href="/logo.png" />
                 <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&display=swap" rel="stylesheet" />
                 <link href="https://fonts.googleapis.com/css2?family=Google+Sans+Text:wght@400;500;700&display=swap" rel="stylesheet" />
             </head>

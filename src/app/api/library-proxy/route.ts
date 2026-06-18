@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
         const res = await fetch(url, {
             headers: {
                 'Accept': 'application/json',
-                'User-Agent': 'KiraFlowState/1.0',
+                'User-Agent': 'GenesisFlowState/1.0',
             },
             next: { revalidate: 86400 }, // cache for 24h
         });

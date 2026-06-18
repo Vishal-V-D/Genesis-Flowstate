@@ -12,12 +12,7 @@ export default function Footer({
             <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12">
                 <div className="col-span-1 md:col-span-2">
                     <div className="flex items-center gap-2 mb-4">
-                        <div className="flex  rounded-sm p-1 px-2 border border-gray-200">
-                            <span className="text-google-blue font-[300]">K</span>
-                            <span className="text-google-red font-[300]">i</span>
-                            <span className="text-google-yellow font-[300]">r</span>
-                            <span className="text-google-green font-[300]">a</span>
-                        </div>
+                        <img src="/logo.png" alt="FlowState Logo" className="w-5 h-5 object-contain" />
                         <span className="text-gray-900 font-[300] text-xl">FlowState</span>
                     </div>
                     <p className="text-gray-500 max-w-sm">
@@ -48,8 +43,8 @@ export default function Footer({
 
             <div className="max-w-6xl mx-auto mt-16 pt-8 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center text-gray-400 text-sm">
                 <div className="flex flex-col gap-1">
-                    <p>© 2026 Kira FlowState. All rights reserved.</p>
-                    <p className="text-xs text-gray-400">A Kira product · Developer Vishal V D</p>
+                    <p>© 2026 Genesis FlowState. All rights reserved.</p>
+                    <p className="text-xs text-gray-400">A Genesis product · Developer Vishal V D</p>
                 </div>
                 <div className="flex items-center gap-6 mt-4 md:mt-0">
                     <div className="flex items-center gap-2">

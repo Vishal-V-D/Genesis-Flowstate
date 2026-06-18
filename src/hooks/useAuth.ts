@@ -1,9 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
-import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { getCurrentSession, signOutUser, CognitoUserSession } from "@/lib/aws-client";
 
 export interface UserProfile {
     uid: string;
@@ -12,6 +10,9 @@ export interface UserProfile {
     lastName?: string;
     onboardingData?: any;
     hoverStyle?: "svgMask" | "tear" | "smooth" | "splatter" | "glitch";
+    excalidrawLibrary?: string;
+    createdAt?: string;
+    hasSeenTour?: boolean;
 }
 
 export function useAuth(requireAuth: boolean = false) {
@@ -20,30 +21,84 @@ export function useAuth(requireAuth: boolean = false) {
     const router = useRouter();
 
     useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-            if (firebaseUser) {
-                try {
-                    const userDoc = await getDoc(doc(db, "users", firebaseUser.uid));
-                    if (userDoc.exists()) {
-                        setUser({ uid: firebaseUser.uid, email: firebaseUser.email || "", ...userDoc.data() });
-                    } else {
-                        setUser({ uid: firebaseUser.uid, email: firebaseUser.email || "" });
+        let isMounted = true;
+
+        async function initAuth() {
+            try {
+                const session = getCurrentSession();
+                if (!session) {
+                    if (isMounted) {
+                        setUser(null);
+                        setLoading(false);
+                        if (requireAuth) router.push("/signin");
                     }
-                } catch (error) {
-                    console.error("Error fetching user profile:", error);
-                    setUser({ uid: firebaseUser.uid, email: firebaseUser.email || "" });
+                    return;
                 }
-            } else {
-                setUser(null);
-                if (requireAuth) {
-                    router.push("/signin");
+
+                // Call local Next.js API Route to fetch user profile from DynamoDB
+                const response = await fetch("/api/users/profile", {
+                    headers: {
+                        Authorization: `Bearer ${session.idToken}`,
+                    },
+                });
+
+                if (response.ok) {
+                    const dbProfile = await response.json();
+                    if (isMounted) {
+                        setUser({
+                            uid: session.uid,
+                            email: session.email,
+                            firstName: session.firstName || dbProfile.firstName,
+                            lastName: session.lastName || dbProfile.lastName,
+                            ...dbProfile,
+                        });
+                    }
+                } else {
+                    // Profile document doesn't exist yet, or API returned error
+                    // Fallback to basic session info
+                    if (isMounted) {
+                        setUser({
+                            uid: session.uid,
+                            email: session.email,
+                            firstName: session.firstName,
+                            lastName: session.lastName,
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error("Error loading auth profile:", err);
+                if (isMounted) {
+                    setUser(null);
+                }
+            } finally {
+                if (isMounted) {
+                    setLoading(false);
                 }
             }
-            setLoading(false);
-        });
+        }
 
-        return () => unsubscribe();
+        initAuth();
+
+        // Listen for standard storage events (handles multi-tab signouts)
+        const handleStorageChange = () => {
+            const session = getCurrentSession();
+            if (!session && requireAuth) {
+                router.push("/signin");
+            }
+        };
+
+        window.addEventListener("storage", handleStorageChange);
+        return () => {
+            isMounted = false;
+            window.removeEventListener("storage", handleStorageChange);
+        };
     }, [requireAuth, router]);
 
-    return { user, loading, setUser };
+    const logout = () => {
+        signOutUser();
+        setUser(null);
+        router.push("/signin");
+    };
+
+    return { user, loading, setUser, logout };
 }

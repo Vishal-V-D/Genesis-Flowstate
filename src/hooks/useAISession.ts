@@ -1,34 +1,14 @@
 "use client";
 /**
  * useAISession.ts — FlowState AI
- *
- * ROOT CAUSES OF "STUCK ON CONNECTING" — ALL FIXED HERE:
- *
- * BUG-1: config.py had GEMINI_MODEL = "gemini-2.0-flash-live-001" but
- *        gemini_config.py used response_modalities=["AUDIO"] (native audio format).
- *        Those two don't match → Gemini connects but sends NO audio back.
- *        Fix: config.py now uses "gemini-2.5-flash-native-audio-preview-12-2025".
- *
- * BUG-2: ExcalidrawWrapper auto-restarts on "stopped" status → reconnect storm.
- *        The useEffect retried every 2s, each attempt failed, each failure set
- *        status="stopped" again, triggering the next attempt immediately.
- *        Fix: status "stopped" does NOT trigger auto-restart. Only "error" retries
- *        once after 3s with a flag so it never loops.
- *
- * BUG-3: AudioContext created before mic permission → browser blocks it silently.
- *        Fix: AudioContext created AFTER mic permission resolves.
- *
- * BUG-4: Transcript bubble showed stale text after AI finished speaking.
- *        Fix: transcript cleared 4s after ai_done.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { doc, getDoc, setDoc, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
+import { getCurrentSession } from "@/lib/aws-client";
 
 const BACKEND_WS =
-  process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8000";
+  process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";
 
 const TAG_AUDIO    = 0x01;
 const TAG_IMAGE    = 0x02;
@@ -172,8 +152,17 @@ export function useAISession({
     if (!user) return;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "workspaces", workspaceId));
-        if (snap.exists() && snap.data().chats) setHistory(snap.data().chats);
+        const session = getCurrentSession();
+        if (!session) return;
+        const res = await fetch(`/api/workspaces/${workspaceId}`, {
+          headers: {
+            Authorization: `Bearer ${session.idToken}`,
+          },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.chats) setHistory(data.chats);
+        }
       } catch (e) { console.warn("[AI] load history:", e); }
     })();
   }, [workspaceId, user]);
@@ -184,7 +173,16 @@ export function useAISession({
     if (fsTimerRef.current) clearTimeout(fsTimerRef.current);
     fsTimerRef.current = setTimeout(async () => {
       try {
-        await setDoc(doc(db, "workspaces", workspaceId), { chats: history }, { merge: true });
+        const session = getCurrentSession();
+        if (!session) return;
+        await fetch(`/api/workspaces/${workspaceId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.idToken}`,
+          },
+          body: JSON.stringify({ chats: history }),
+        });
       } catch (e) { console.warn("[AI] save history:", e); }
     }, 2000);
   }, [history, workspaceId, user]);
@@ -192,8 +190,18 @@ export function useAISession({
   const clearHistory = useCallback(async () => {
     setHistory([]);
     if (user) {
-      try { await updateDoc(doc(db, "workspaces", workspaceId), { chats: [] }); }
-      catch (e) { console.warn("[AI] clear:", e); }
+      try {
+        const session = getCurrentSession();
+        if (!session) return;
+        await fetch(`/api/workspaces/${workspaceId}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.idToken}`,
+          },
+          body: JSON.stringify({ chats: [] }),
+        });
+      } catch (e) { console.warn("[AI] clear:", e); }
     }
   }, [workspaceId, user]);
 
@@ -260,7 +268,7 @@ export function useAISession({
       
       const ints = new Int16Array(data);
       if (ints.length === 0) return;
-
+ 
       pcmBufRef.current.push(new Int16Array(ints));
 
       const ctx = playCtxRef.current;
@@ -403,7 +411,9 @@ export function useAISession({
   // ── WebSocket ──────────────────────────────────────────────────────────────
   const openWebSocket = useCallback((): Promise<void> => {
     return new Promise((resolve, reject) => {
-      const url = `${BACKEND_WS}/ws/session/${encodeURIComponent(workspaceId)}?mode=assisted`;
+      const session = getCurrentSession();
+      const tokenParam = session?.idToken ? `&token=${encodeURIComponent(session.idToken)}` : "";
+      const url = `${BACKEND_WS}/ws/session/${encodeURIComponent(workspaceId)}?mode=assisted${tokenParam}`;
       console.log(`[AI] 🔌 connecting → ${url}`);
 
       const ws = new WebSocket(url);
@@ -415,8 +425,6 @@ export function useAISession({
         startCanvasLoop();
         syncLibrary();
         resolve();
-        // Status stays "connecting" until backend sends { type:"status", status:"ai_ready" }
-        // This accurately reflects actual Gemini readiness, not just TCP connection
       };
 
       ws.onmessage = async (evt) => {
@@ -483,7 +491,7 @@ export function useAISession({
       };
 
       ws.onerror = (e) => {
-        console.error("[AI] WS error — is backend running on port 8000?", e);
+        console.error("[AI] WS error", e);
         updateStatus("error");
         reject(new Error("WebSocket connection failed"));
       };
@@ -536,12 +544,10 @@ export function useAISession({
     try {
       updateStatus("requesting_permissions");
 
-      // Request mic FIRST — this triggers the browser permission dialog
+      // Request mic FIRST
       await startMic();
       if (myID !== sessionIDRef.current) throw new Error("Aborted");
 
-      // Create playback AudioContext AFTER mic granted
-      // (browser policy: AudioContext needs a user gesture or active mic)
       if (!playCtxRef.current || playCtxRef.current.state === "closed") {
         playCtxRef.current   = new AudioContext({ sampleRate: PLAY_SAMPLE_RATE });
         nextStartRef.current = 0;
@@ -554,8 +560,6 @@ export function useAISession({
       await openWebSocket();
       if (myID !== sessionIDRef.current) throw new Error("Aborted");
 
-      // "connecting" label shows while Gemini Live initialises (~1-2s)
-      // Backend sends { type:"status", status:"ai_ready" } when Gemini is open
       console.log("[AI] 🚀 WS open — Gemini initialising...");
 
     } catch (err: any) {
