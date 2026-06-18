@@ -36,6 +36,22 @@ graph TD
 3. **Review**: Check the generated artifacts in the built-in IDE environment. Review Terraform `.tf` files, Prisma schemas, and GitHub Actions workflows.
 4. **Deploy**: Take the synthesized code and run it in your CLI to deploy your robust, automated architecture.
 
+## ⚡ Custom Binary WebSocket Protocol
+
+FlowState features a highly optimized, custom binary protocol over WebSockets for zero-latency AI communication. Designed for performance, it bypasses heavy JSON payloads for continuous, high-frequency data streams.
+
+### Protocol Structure
+Communication is structured using a simple 1-byte prefix tag followed by the raw binary payload:
+
+- **\`0x01\` (\`TAG_AUDIO\`)**: *Client-to-Server*. Streams user voice data in raw \`PCM\` format (16kHz, mono, Int16) directly from a custom \`AudioWorklet\`. Ensures ultra-low latency Voice Activity Detection (VAD) without dropping samples.
+- **\`0x02\` (\`TAG_IMAGE\`)**: *Client-to-Server*. Synchronizes the visual whiteboard canvas by transmitting the graph state as an optimized binary blob.
+- **\`0x03\` (\`TAG_TEXT\`)**: *Client-to-Server*. Encodes standard chat messages as UTF-8 binary payloads.
+- **\`0x04\` (\`TAG_LIBRARY\`)**: *Client-to-Server*. Synchronizes the user's component library dynamically.
+- **\`0xA1\` (\`TAG_AI_AUDIO\`)**: *Server-to-Client*. Streams the AI's generated response as high-quality \`PCM\` audio (24kHz, Float32) for instant playback.
+
+This tag-based routing approach guarantees minimal overhead, making the interactive "Vibe Coding" session feel native and real-time.
+
+
 ## 🛠️ Technology Stack
 
 - **Framework**: [Next.js 14](https://nextjs.org/) (App Router)
