@@ -89,6 +89,10 @@ export default function Home() {
     const heroOpacity = useTransform(scrollYProgress, [0, 0.08], [1, 0]);
     const heroY = useTransform(scrollYProgress, [0, 0.08], [0, -80]);
     const heroLightfallOpacity = useTransform(scrollYProgress, [0, 0.08], [0.75, 0]);
+    
+    // Absolute scroll position for LightPillar fade-in
+    const { scrollY } = useScroll();
+    const pillarOpacity = useTransform(scrollY, [50, 300], [0, 0.75]);
 
     const leftColumnOpacity = useTransform(scrollYProgress, [0.08, 0.15], [0, 1]);
     const leftColumnY = useTransform(scrollYProgress, [0.08, 0.15], [30, 0]);
@@ -174,9 +178,9 @@ export default function Home() {
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5, delay: 0.1 }}
-                        className="text-4xl sm:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 tracking-tight leading-[1.15] mb-8"
+                        className="text-4xl sm:text-5xl font-inter font-medium text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 tracking-tight leading-[1.15] mb-8"
                     >
-                        Whiteboards that compile<br />directly to cloud code
+                        Visual architecture that<br />actually compiles.
                     </motion.h1>
 
                     {/* Subheading */}
@@ -184,10 +188,9 @@ export default function Home() {
                         initial={{ opacity: 0, y: 15 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5, delay: 0.2 }}
-                        className="text-base sm:text-lg text-gray-400 max-w-2xl leading-relaxed mb-10"
+                        className="text-base sm:text-lg text-gray-200 max-w-2xl leading-relaxed mb-10"
                     >
-                        FlowState combines intuitive visual whiteboarding with an advanced AI compiler.
-                        Design system architectures, collaborate with colleagues, and watch clean Terraform generate in real-time.
+                        The multiplayer canvas for engineering teams. Design systems visually and watch FlowState instantly compile your architecture into production-ready code and comprehensive documentation.
                     </motion.p>
 
                     {/* Actions */}
@@ -211,8 +214,32 @@ export default function Home() {
 
             </section>
 
+            {/* Giant Wrapper for LightPillar Spanning */}
+            <div className="relative z-30 bg-[#0a0a0c]" style={{ clipPath: 'inset(0)' }}>
+                {/* Fixed LightPillar Background spanning MacBook + IDE/Sandbox/Pricing sections */}
+                <motion.div 
+                    style={{ opacity: showEffects ? pillarOpacity : 0 }}
+                    className="fixed top-0 left-0 w-full h-screen pointer-events-none transition-opacity duration-700 -z-20"
+                >
+                    {showEffects && (
+                    <LightPillar
+                        topColor="#5227FF"
+                        bottomColor="#FF9FFC"
+                        intensity={0.9}
+                        rotationSpeed={0.15}
+                        glowAmount={0.004}
+                        pillarWidth={4.0}
+                        pillarHeight={0.35}
+                        noiseIntensity={0.25}
+                        pillarRotation={15}
+                        interactive={false}
+                        mixBlendMode="screen"
+                    />
+                    )}
+                </motion.div>
+
             {/* Scroll-Pinned MacBook Section (Desktop) */}
-            <div ref={containerRef} id="how-it-works" className="hidden lg:block relative h-[400vh] w-full bg-[#0a0a0c] z-30">
+            <div ref={containerRef} id="how-it-works" className="hidden lg:block relative h-[400vh] w-full bg-transparent z-30">
                 {/* Sticky Wrapper */}
                 <div className="sticky top-0 h-screen w-full flex items-center justify-center overflow-hidden">
                     {/* Lightfall Canvas Background */}
@@ -248,12 +275,11 @@ export default function Home() {
                         style={{ opacity: heroOpacity, y: heroY }}
                         className="flex flex-col items-center max-w-4xl mx-auto absolute top-[18%] left-0 right-0 z-40 text-center px-6 pointer-events-none"
                     >
-                        <h1 className="text-4xl sm:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 tracking-tight leading-[1.15] mb-8">
-                            Whiteboards that compile<br />directly to cloud code
+                        <h1 className="text-4xl sm:text-6xl font-inter font-medium text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 tracking-tight leading-[1.15] mb-8">
+                            Visual architecture that<br />actually compiles.
                         </h1>
-                        <p className="text-base sm:text-lg text-gray-400 max-w-2xl leading-relaxed mb-10">
-                            FlowState combines intuitive visual whiteboarding with an advanced AI compiler.
-                            Design system architectures, collaborate with colleagues, and watch clean Terraform generate in real-time.
+                        <p className="text-base sm:text-lg text-gray-200 max-w-2xl leading-relaxed mb-10">
+                            The multiplayer canvas for engineering teams. Design systems visually and watch FlowState instantly compile your architecture into production-ready code and comprehensive documentation.
                         </p>
                         <div className="flex flex-row gap-4 items-center justify-center pointer-events-auto">
                             <Link href="/library" className="flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-200 transition-all text-sm justify-center">
@@ -618,7 +644,7 @@ export default function Home() {
             </div>
 
             {/* Mobile Feature Display (Linear, Stacked cards - clean responsive fallback) */}
-            <div id="how-it-works" className="lg:hidden block px-6 py-20 bg-[#0a0a0c] border-t border-white/[0.05]">
+            <div id="how-it-works" className="lg:hidden block px-6 py-20 bg-transparent border-t border-white/[0.05]">
                 <div className="max-w-xl mx-auto flex flex-col gap-16">
                     <div className="text-center">
                         <span className="text-xs font-mono tracking-widest text-indigo-400 uppercase font-semibold">
@@ -707,25 +733,7 @@ export default function Home() {
 
 
             {/* Shared Background Container for IDE, Sandbox, and Pricing */}
-            <div className="relative z-40 overflow-hidden bg-[#070709] border-t border-white/[0.05]">
-                {/* LightPillar Background Component Spanning Sections */}
-                <div className={`absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-700 ${showEffects ? 'opacity-75' : 'opacity-0'}`}>
-                    {showEffects && (
-                    <LightPillar
-                        topColor="#5227FF"
-                        bottomColor="#FF9FFC"
-                        intensity={0.9}
-                        rotationSpeed={0.15}
-                        glowAmount={0.004}
-                        pillarWidth={4.0}
-                        pillarHeight={0.35}
-                        noiseIntensity={0.25}
-                        pillarRotation={15}
-                        interactive={false}
-                        mixBlendMode="screen"
-                    />
-                    )}
-                </div>
+            <div className="relative z-40 bg-transparent border-t border-white/[0.05]">
 
                 {/* VS Code Workspace Compiler Preview */}
                 <IDEPreviewSection />
@@ -735,6 +743,7 @@ export default function Home() {
 
                 {/* B2B Pricing Tier Section */}
                 <PricingSection />
+            </div>
             </div>
 
             {/* CTA Section */}

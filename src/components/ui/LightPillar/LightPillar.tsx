@@ -75,14 +75,14 @@ const LightPillar: React.FC<LightPillarProps> = ({
     if (isMobile && quality !== 'low') effectiveQuality = 'low';
 
     const qualitySettings = {
-      low: { iterations: 24, waveIterations: 1, pixelRatio: 0.5, precision: 'mediump', stepMultiplier: 1.5 },
-      medium: { iterations: 40, waveIterations: 2, pixelRatio: 0.65, precision: 'mediump', stepMultiplier: 1.2 },
+      low: { iterations: 20, waveIterations: 1, pixelRatio: 0.5, precision: 'mediump', stepMultiplier: 1.5 },
+      medium: { iterations: 30, waveIterations: 2, pixelRatio: 0.75, precision: 'mediump', stepMultiplier: 1.2 },
       high: {
-        iterations: 80,
-        waveIterations: 4,
-        pixelRatio: Math.min(window.devicePixelRatio, 2),
-        precision: 'highp',
-        stepMultiplier: 1.0
+        iterations: 45,
+        waveIterations: 3,
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 1.25),
+        precision: 'mediump',
+        stepMultiplier: 1.2
       }
     };
 
@@ -262,12 +262,20 @@ const LightPillar: React.FC<LightPillarProps> = ({
     const targetFPS = effectiveQuality === 'low' ? 30 : 60;
     const frameTime = 1000 / targetFPS;
 
+    let isVisible = true;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]) {
+        isVisible = entries[0].isIntersecting;
+      }
+    });
+    io.observe(container);
+
     const animate = (currentTime: number) => {
       if (!materialRef.current || !rendererRef.current || !sceneRef.current || !cameraRef.current) return;
 
       const deltaTime = currentTime - lastTime;
 
-      if (deltaTime >= frameTime) {
+      if (isVisible && deltaTime >= frameTime) {
         timeRef.current += 0.016 * rotationSpeedRef.current;
         const t = timeRef.current;
         materialRef.current.uniforms.uTime.value = t;
@@ -300,6 +308,7 @@ const LightPillar: React.FC<LightPillarProps> = ({
 
     return () => {
       window.removeEventListener('resize', handleResize);
+      io.disconnect();
       if (interactive) {
         container.removeEventListener('mousemove', handleMouseMove);
       }

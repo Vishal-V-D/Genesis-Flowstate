@@ -223,13 +223,14 @@ const Lightfall = ({
   const rendererRef = useRef<any>(null);
   const mouseTargetRef = useRef<[number, number]>([99999.0, 99999.0]);
   const lastTimeRef = useRef<number>(0);
+  const colorsStr = JSON.stringify(colors);
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
     const renderer = new Renderer({
-      dpr: dpr ?? (typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1),
+      dpr: dpr ?? (typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 1.25) : 1),
       alpha: true,
       antialias: true
     });
@@ -242,7 +243,7 @@ const Lightfall = ({
     canvas.style.display = 'block';
     container.appendChild(canvas);
 
-    const { arr, count, avg } = prepColors(colors);
+    const { arr, count, avg } = prepColors(JSON.parse(colorsStr));
 
     const uniforms = {
       iResolution: { value: [gl.drawingBufferWidth, gl.drawingBufferHeight, 1] },
@@ -292,6 +293,14 @@ const Lightfall = ({
     const ro = new ResizeObserver(resize);
     ro.observe(container);
 
+    let isVisible = true;
+    const io = new IntersectionObserver((entries) => {
+      if (entries[0]) {
+        isVisible = entries[0].isIntersecting;
+      }
+    });
+    io.observe(container);
+
     const onPointerMove = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
       const scale = renderer.dpr || 1;
@@ -330,7 +339,7 @@ const Lightfall = ({
       } else {
         lastTimeRef.current = t;
       }
-      if (!paused && programRef.current && meshRef.current) {
+      if (!paused && isVisible && programRef.current && meshRef.current) {
         try {
           renderer.render({ scene: meshRef.current });
         } catch (e) {
@@ -347,6 +356,7 @@ const Lightfall = ({
         canvas.removeEventListener('pointerleave', onPointerLeave);
       }
       ro.disconnect();
+      io.disconnect();
       if (canvas.parentElement === container) {
         container.removeChild(canvas);
       }
@@ -367,7 +377,7 @@ const Lightfall = ({
   }, [
     dpr,
     paused,
-    colors,
+    colorsStr,
     backgroundColor,
     speed,
     streakCount,
