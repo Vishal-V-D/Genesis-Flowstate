@@ -130,8 +130,10 @@ export default function InviteModal({ isOpen = true, onClose, workspaceId, works
         }
     };
 
-    // Load workspace tokens on open
+    // Load workspace tokens when the modal is opened.
+    // Guarded on `isOpen` so we don't fetch while the modal is closed.
     useEffect(() => {
+        if (!isOpen) return;
         const session = getCurrentSession();
         if (!session || !workspaceId) return;
 
@@ -154,7 +156,11 @@ export default function InviteModal({ isOpen = true, onClose, workspaceId, works
             }
         };
         fetchSettings();
-    }, [workspaceId]);
+    }, [isOpen, workspaceId]);
+
+    // Respect the `isOpen` prop — without this the modal renders permanently and
+    // clicking Done / X / the backdrop appears to do nothing.
+    if (!isOpen) return null;
 
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px]" onClick={(e) => e.target === e.currentTarget && onClose()}>

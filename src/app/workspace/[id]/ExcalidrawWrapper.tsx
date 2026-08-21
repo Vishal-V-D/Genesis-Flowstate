@@ -1064,8 +1064,10 @@ export default function ExcalidrawWrapper({
             if (isStopped) return;
             const session = getCurrentSession();
             const tokenParam = session?.idToken ? `?token=${encodeURIComponent(session.idToken)}` : "";
+            // Normalize BACKEND_WS to a bare host (strip any ws/wss/http/https prefix),
+            // then apply the correct secure protocol based on the current page.
             const wsProto = window.location.protocol === "https:" ? "wss:" : "ws:";
-            const host = BACKEND_WS.replace(/^https?:/, "").replace(/^\/\//, "");
+            const host = BACKEND_WS.replace(/^(wss?|https?):\/\//, "").replace(/\/+$/, "");
             const url = `${wsProto}//${host}/ws/room/${encodeURIComponent(workspaceId)}/${user.uid}${tokenParam}`;
             
             ws = new WebSocket(url);
