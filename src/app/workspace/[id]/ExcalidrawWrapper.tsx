@@ -13,6 +13,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { getCurrentSession } from "@/lib/aws-client";
 import { useRouter } from "next/navigation";
 import InviteModal from "@/components/workspace/InviteModal";
+import AIToolsPanel from "@/components/workspace/AIToolsPanel";
 
 const BACKEND_WS = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";
 
@@ -904,6 +905,181 @@ export default function ExcalidrawWrapper({
         drainDrawQueue();
     }, [drainDrawQueue]);
 
+    // ── Draw a connection (arrow) between two nodes that already exist ─────────
+    // Used by CONNECT_NODES actions (from generate_full_architecture streaming
+    // and the connect_nodes tool). Looks the endpoints up in the registry /
+    // canvas and binds an arrow between them so the diagram is fully wired.
+    const drawConnection = useCallback((fromName: string, toName: string, label = "") => {
+        const api = excalidrawRef.current;
+        if (!api) return;
+
+        const liveEls = api.getSceneElements().filter((e: any) => !e.isDeleted) as any[];
+
+        const findShape = (label: string): any | null => {
+            const wanted = label.trim().toLowerCase();
+            // Registry id → shape
+            const regId = nodeIdRegistry.current.get(label.trim());
+            let el = regId
+                ? liveEls.find((e: any) => e.id === regId && e.type !== "arrow" && e.type !== "text")
+                : null;
+            if (el) return el;
+            // Fallback: match bound text label → its container shape
+            const textEl = liveEls.find(
+                (e: any) => e.type === "text" && e.containerId &&
+                    (e.text ?? "").toLowerCase().trim() === wanted
+            );
+            if (textEl?.containerId) {
+                return liveEls.find((e: any) => e.id === textEl.containerId && e.type !== "arrow") ?? null;
+            }
+            return null;
+        };
+
+        const a = findShape(fromName);
+        const b = findShape(toName);
+        if (!a || !b) {
+            console.warn(`[FlowState] ⚠️ CONNECT skipped — missing "${!a ? fromName : toName}"`);
+            return;
+        }
+
+        // Avoid duplicate arrows between the same pair.
+        const already = liveEls.some((e: any) =>
+            e.type === "arrow" &&
+            e.startBinding?.elementId === a.id &&
+            e.endBinding?.elementId === b.id
+        );
+        if (already) return;
+
+        const aCX = (a.x ?? 0) + (a.width ?? 0) / 2;
+        const aCY = (a.y ?? 0) + (a.height ?? 0) / 2;
+        const bCX = (b.x ?? 0) + (b.width ?? 0) / 2;
+        const bCY = (b.y ?? 0) + (b.height ?? 0) / 2;
+
+        const arrowConverted = convertToExcalidrawElements([{
+            type: "arrow" as const,
+            id: crypto.randomUUID(),
+            x: aCX, y: aCY,
+            width: bCX - aCX,
+            height: bCY - aCY,
+            points: [[0, 0], [bCX - aCX, bCY - aCY]] as any,
+            strokeColor: "#64748b",
+            strokeWidth: 2,
+            roughness: 0,
+            startBinding: { elementId: a.id, focus: 0, gap: 6 },
+            endBinding: { elementId: b.id, focus: 0, gap: 6 },
+            endArrowhead: "arrow" as any,
+            ...(label ? {
+                label: { text: label, fontSize: 11, fontFamily: 2, strokeColor: "#64748b" },
+            } : {}),
+        }]);
+
+        api.updateScene({ elements: [...liveEls, ...arrowConverted] });
+        arrowConverted.forEach((el: any) => currentDiagramIdsRef.current.add(el.id));
+        lastDrawTimeRef.current = Date.now();
+        console.log(`[FlowState] 🔗 connected "${fromName}" → "${toName}"`);
+    }, [excalidrawRef]);
+
+    // ── Draw a full graph ({nodes, edges}) with the same live streaming feel ──
+    // Used by "Generate from Prompt" and the Templates gallery. Nodes are queued
+    // (parent = first upstream edge) then edges are drawn once nodes settle.
+    const drawGraph = useCallback((graph: {
+        nodes: { name: string; type: string; layer?: number }[];
+        edges: { from: string; to: string; label?: string }[];
+    }) => {
+        const nodes = graph.nodes ?? [];
+        const edges = graph.edges ?? [];
+        if (nodes.length === 0) return;
+
+        // New diagram → reset the current-diagram tracker.
+        currentDiagramIdsRef.current = new Set();
+
+        // First upstream neighbour per node → gives the draw engine a parent.
+        const incoming: Record<string, string> = {};
+        for (const e of edges) {
+            if (e.to && e.from && !(e.to in incoming)) incoming[e.to] = e.from;
+        }
+
+        // Queue nodes ordered by layer (top-to-bottom).
+        const ordered = [...nodes].sort((a, b) => (a.layer ?? 0) - (b.layer ?? 0));
+        for (const n of ordered) {
+            const parent = incoming[n.name] ?? "";
+            handleAddNode({
+                action: "ADD_NODE",
+                node_name: n.name,
+                node_type: n.type,
+                connected_to: parent,
+                placement: parent ? "bottom" : "",
+            } as AddNodePayload);
+        }
+
+        // After nodes render, draw all edges (including cross-links). The draw
+        // queue drains at ~400ms/node, so schedule edges comfortably after.
+        const edgeStart = 500 + ordered.length * 450;
+        edges.forEach((e, i) => {
+            setTimeout(() => drawConnection(e.from, e.to, e.label ?? ""), edgeStart + i * 150);
+        });
+    }, [handleAddNode, drawConnection]);
+
+    // ── Unified action dispatcher — routes AI actions to the right handler ─────
+    const handleAction = useCallback((payload: AddNodePayload) => {
+        const action = (payload as any).action;
+        if (action === "CONNECT_NODES") {
+            // Defer slightly so both endpoint nodes are guaranteed drawn first.
+            const from = (payload as any).from_node ?? "";
+            const to = (payload as any).to_node ?? "";
+            const label = (payload as any).label ?? "";
+            setTimeout(() => drawConnection(from, to, label), 120);
+            return;
+        }
+        // ADD_NODE (and unknown node-like actions) → draw queue
+        handleAddNode(payload);
+    }, [handleAddNode, drawConnection]);
+
+    // ── AI Tools panel state + helpers ────────────────────────────────────────
+    const [isAIToolsOpen, setIsAIToolsOpen] = React.useState(false);
+
+    // Read the current on-canvas components (shape + its bound text label) so the
+    // review / cost endpoints analyze exactly what the user sees.
+    const getCanvasNodes = useCallback((): { name: string; type: string }[] => {
+        const api = excalidrawRef.current;
+        if (!api) return [];
+        const els = api.getSceneElements().filter((e: any) => !e.isDeleted) as any[];
+        const out: { name: string; type: string }[] = [];
+        els.forEach((el: any) => {
+            if (el.type === "text" && el.containerId && el.text) {
+                out.push({ name: el.text.trim(), type: "server" });
+            }
+        });
+        return out;
+    }, [excalidrawRef]);
+
+    // Export the whole canvas as a downloadable PNG or SVG file.
+    const exportCanvas = useCallback(async (format: "png" | "svg") => {
+        const api = excalidrawRef.current;
+        if (!api) return;
+        try {
+            const els = api.getSceneElements();
+            const appState = api.getAppState();
+            const files = api.getFiles();
+            let blob: Blob;
+            if (format === "svg") {
+                const { exportToSvg } = await import("@excalidraw/excalidraw");
+                const svg = await exportToSvg({ elements: els, appState: { ...appState, exportBackground: true }, files });
+                blob = new Blob([new XMLSerializer().serializeToString(svg)], { type: "image/svg+xml" });
+            } else {
+                const { exportToBlob } = await import("@excalidraw/excalidraw");
+                blob = await exportToBlob({ elements: els, appState: { ...appState, exportBackground: true }, files, mimeType: "image/png" });
+            }
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${(workspaceTitle || "architecture").replace(/\s+/g, "_")}.${format}`;
+            a.click();
+            URL.revokeObjectURL(url);
+        } catch (e) {
+            console.warn("[FlowState] export failed:", e);
+        }
+    }, [excalidrawRef, workspaceTitle]);
+
     // ── Keyboard scroll: PgUp / PgDn / arrow keys pan the canvas ─────────────
     useEffect(() => {
         const STEP = 200;
@@ -953,7 +1129,7 @@ export default function ExcalidrawWrapper({
     }, [excalidrawRef]);
 
     const ai = useAISession({
-        workspaceId, getCanvasBlob, onAddNode: handleAddNode,
+        workspaceId, getCanvasBlob, onAddNode: handleAction,
         onTranscript: (text) => setTranscript(text),
         libraryItems: savedLibraryItems,
     });
@@ -1461,6 +1637,16 @@ export default function ExcalidrawWrapper({
                             </button>
                         </div>
 
+                        {/* AI Tools button — generate / templates / review / cost */}
+                        <button
+                            onClick={() => setIsAIToolsOpen(true)}
+                            className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-3 py-2 ml-0.5 sm:ml-1 rounded-lg text-white font-medium text-[13px] transition-all active:scale-95 border border-white/20 bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:opacity-90"
+                            title="AI Tools — generate, review, estimate cost"
+                        >
+                            <Sparkles size={15} className="text-fuchsia-100 shrink-0" />
+                            <span className="hidden sm:inline whitespace-nowrap">AI Tools</span>
+                        </button>
+
                         {/* Generate Artifact button */}
                         <button
                             onClick={handleGenerateArtifact}
@@ -1516,6 +1702,14 @@ export default function ExcalidrawWrapper({
 
             <HistoryPanel isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} history={ai.history} onClear={ai.clearHistory} onSend={ai.sendText} />
             <InviteModal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} workspaceId={workspaceId} workspaceTitle={workspaceTitle} />
+            <AIToolsPanel
+                isOpen={isAIToolsOpen}
+                onClose={() => setIsAIToolsOpen(false)}
+                workspaceId={workspaceId}
+                drawGraph={drawGraph}
+                getCanvasNodes={getCanvasNodes}
+                exportCanvas={exportCanvas}
+            />
 
             {isAssisted && (
                 <Joyride steps={tourSteps} run={runTour} continuous showProgress showSkipButton callback={handleJoyrideCallback}
