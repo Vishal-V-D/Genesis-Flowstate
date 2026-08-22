@@ -202,6 +202,167 @@ const DEFAULT_STYLE: NodeStyle = {
 
 const getStyle = (type: string): NodeStyle => NODE_STYLES[type] ?? DEFAULT_STYLE;
 
+// ── Per-type professional icons (Lucide line-icon SVG path data) ──────────────
+// We embed real vector icons inside each node as an Excalidraw image element,
+// rather than emoji, for a clean professional look. Paths are the inner markup
+// of the corresponding lucide-react icon (24x24 viewBox, currentColor stroke).
+const NODE_ICON_PATHS: Record<string, string> = {
+    client: '<rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/>',
+    server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+    database: '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/>',
+    cache: '<polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>',
+    queue: '<path d="M4 12h16"/><path d="M4 6h16"/><path d="M4 18h16"/>',
+    gateway: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/><rect width="18" height="18" x="3" y="3" rx="2"/>',
+    cdn: '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+    loadbalancer: '<path d="m8 6 4-4 4 4"/><path d="M12 2v10.3"/><path d="M4 12h16"/><path d="M6 12v4a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2v-4"/>',
+    auth: '<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+    storage: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+    microservice: '<rect width="8" height="8" x="3" y="3" rx="1"/><rect width="8" height="8" x="13" y="13" rx="1"/><path d="M11 7h4a2 2 0 0 1 2 2v4"/>',
+    external_api: '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+    firewall: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+    dns: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>',
+};
+const hasIcon = (type: string): boolean => type in NODE_ICON_PATHS;
+
+// Build a data-URL SVG for a node's icon, coloured to match its stroke.
+const buildIconDataUrl = (type: string, color: string): string | null => {
+    const inner = NODE_ICON_PATHS[type];
+    if (!inner) return null;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`;
+    // btoa needs latin1; the SVG here is ASCII-safe.
+    return `data:image/svg+xml;base64,${btoa(svg)}`;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTO-LAYOUT — dependency-free layered graph layout (dagre/Mermaid-style).
+// Steps: (1) assign each node a rank via longest-path from sources,
+// (2) order nodes within each rank to minimise edge crossings using the
+// barycenter heuristic over several sweeps, (3) assign coordinates.
+// Produces clean top-to-bottom diagrams where edges rarely cross.
+// ═══════════════════════════════════════════════════════════════════════════
+type LayoutInput = {
+    nodes: { name: string; type: string; layer?: number }[];
+    edges: { from: string; to: string; label?: string }[];
+};
+type LaidOutNode = { name: string; type: string; x: number; y: number; w: number; h: number };
+
+function computeLayeredLayout(
+    graph: LayoutInput,
+    sizeOf: (type: string) => { w: number; h: number },
+): { positions: LaidOutNode[]; width: number; height: number } {
+    const names = graph.nodes.map((n) => n.name);
+    const nameSet = new Set(names);
+    // Keep only edges whose endpoints exist, drop self-loops.
+    const edges = graph.edges.filter(
+        (e) => nameSet.has(e.from) && nameSet.has(e.to) && e.from !== e.to,
+    );
+
+    const outAdj = new Map<string, string[]>();
+    const inDeg = new Map<string, number>();
+    names.forEach((n) => { outAdj.set(n, []); inDeg.set(n, 0); });
+    edges.forEach((e) => {
+        outAdj.get(e.from)!.push(e.to);
+        inDeg.set(e.to, (inDeg.get(e.to) ?? 0) + 1);
+    });
+
+    // ── 1. Rank assignment ────────────────────────────────────────────────
+    // Prefer the model-provided `layer`; otherwise longest-path from sources.
+    const rank = new Map<string, number>();
+    const hasExplicitLayers = new Set(graph.nodes.map((n) => n.layer ?? 0)).size > 1;
+    if (hasExplicitLayers) {
+        graph.nodes.forEach((n) => rank.set(n.name, n.layer ?? 0));
+    } else {
+        // Kahn-style longest path. Cycles are broken by processing order.
+        const q: string[] = names.filter((n) => (inDeg.get(n) ?? 0) === 0);
+        names.forEach((n) => rank.set(n, 0));
+        const remaining = new Map(inDeg);
+        const seen = new Set<string>();
+        while (q.length) {
+            const u = q.shift()!;
+            if (seen.has(u)) continue;
+            seen.add(u);
+            for (const v of outAdj.get(u) ?? []) {
+                rank.set(v, Math.max(rank.get(v) ?? 0, (rank.get(u) ?? 0) + 1));
+                remaining.set(v, (remaining.get(v) ?? 1) - 1);
+                if ((remaining.get(v) ?? 0) <= 0) q.push(v);
+            }
+        }
+        // Any node never reached (in a cycle) keeps rank 0 → nudge below parents.
+        names.forEach((n) => {
+            if (!seen.has(n)) {
+                const parents = edges.filter((e) => e.to === n).map((e) => rank.get(e.from) ?? 0);
+                if (parents.length) rank.set(n, Math.max(...parents) + 1);
+            }
+        });
+    }
+
+    // ── 2. Order within ranks (barycenter crossing minimisation) ───────────
+    const byRank = new Map<number, string[]>();
+    names.forEach((n) => {
+        const r = rank.get(n) ?? 0;
+        (byRank.get(r) ?? byRank.set(r, []).get(r)!).push(n);
+    });
+    const ranks = [...byRank.keys()].sort((a, b) => a - b);
+    const posInRank = new Map<string, number>();
+    ranks.forEach((r) => byRank.get(r)!.forEach((n, i) => posInRank.set(n, i)));
+
+    const parentsOf = (n: string) => edges.filter((e) => e.to === n).map((e) => e.from);
+    const childrenOf = (n: string) => edges.filter((e) => e.from === n).map((e) => e.to);
+
+    for (let sweep = 0; sweep < 4; sweep++) {
+        const downward = sweep % 2 === 0;
+        const order = downward ? ranks : [...ranks].reverse();
+        for (const r of order) {
+            const layer = byRank.get(r)!;
+            const bary = new Map<string, number>();
+            for (const n of layer) {
+                const neighbors = downward ? parentsOf(n) : childrenOf(n);
+                if (neighbors.length === 0) { bary.set(n, posInRank.get(n) ?? 0); continue; }
+                const avg = neighbors.reduce((s, m) => s + (posInRank.get(m) ?? 0), 0) / neighbors.length;
+                bary.set(n, avg);
+            }
+            layer.sort((a, b) => (bary.get(a)! - bary.get(b)!));
+            layer.forEach((n, i) => posInRank.set(n, i));
+        }
+    }
+
+    // ── 3. Coordinate assignment ───────────────────────────────────────────
+    const COL_GAP = 80;
+    const ROW_GAP = 120;
+    const typeOf = new Map(graph.nodes.map((n) => [n.name, n.type]));
+
+    // Row heights = tallest node in the row; column widths per row.
+    const rowY: number[] = [];
+    let yCursor = 0;
+    const rowHeights = ranks.map((r) =>
+        Math.max(...byRank.get(r)!.map((n) => sizeOf(typeOf.get(n)!).h)),
+    );
+    ranks.forEach((_, i) => { rowY[i] = yCursor; yCursor += rowHeights[i] + ROW_GAP; });
+
+    // Compute each row's total width to centre rows against the widest one.
+    const rowWidths = ranks.map((r) =>
+        byRank.get(r)!.reduce((s, n) => s + sizeOf(typeOf.get(n)!).w, 0) +
+        (byRank.get(r)!.length - 1) * COL_GAP,
+    );
+    const maxWidth = Math.max(...rowWidths, 1);
+
+    const positions: LaidOutNode[] = [];
+    ranks.forEach((r, ri) => {
+        const layer = byRank.get(r)!;
+        let x = (maxWidth - rowWidths[ri]) / 2;
+        const y = rowY[ri];
+        for (const n of layer) {
+            const { w, h } = sizeOf(typeOf.get(n)!);
+            // Vertically centre shorter nodes within the row band.
+            const yc = y + (rowHeights[ri] - h) / 2;
+            positions.push({ name: n, type: typeOf.get(n)!, x, y: yc, w, h });
+            x += w + COL_GAP;
+        }
+    });
+
+    return { positions, width: maxWidth, height: yCursor };
+}
+
 // ── Distinct vibrant hex color palette mapped deterministically from uid ──────
 const COLLAB_COLORS = [
     { background: '#FF4B4B', stroke: '#CC0000' },
@@ -353,7 +514,7 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
                                 {msg.role === 'user' ? (
                                     <><span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">You</span><User size={10} className="text-gray-400" /></>
                                 ) : (
-                                    <><Sparkles size={10} className="text-blue-500" /><span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Friday</span></>
+                                    <><Sparkles size={10} className="text-blue-500" /><span className="text-[10px] font-bold text-blue-500 uppercase tracking-widest">Genesis</span></>
                                 )}
                             </div>
                             <div style={{
@@ -375,7 +536,7 @@ function HistoryPanel({ isOpen, onClose, history, onClear, onSend }: HistoryPane
                 <div className="relative flex items-center">
                     <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                        placeholder="Type a message to Friday..."
+                        placeholder="Type a message to Genesis..."
                         className="w-full bg-black/5 border-none rounded-xl py-2.5 pl-4 pr-12 text-sm focus:ring-2 focus:ring-blue-500/20 transition-all placeholder:text-gray-400" />
                     <button onClick={handleSend} disabled={!input.trim()}
                         className="absolute right-1.5 p-1.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:hover:bg-blue-500 transition-all">
@@ -623,8 +784,12 @@ export default function ExcalidrawWrapper({
         // convertToExcalidrawElements produces bound text elements with containerId
         // Shapes also have a label property in the source spec but get split into
         // shape + bound text in the scene. We scan both patterns.
+        const typeById = new Map<string, string>();
+        els.forEach((el: any) => typeById.set(el.id, el.type));
         els.forEach((el) => {
             if (el.type === "text" && el.containerId && el.text) {
+                // Only shape labels are node names; skip arrow (edge) labels.
+                if (typeById.get(el.containerId) === "arrow") return;
                 const name = el.text.trim();
                 nodeIdRegistry.current.set(name, el.containerId);
                 drawnNamesRef.current.add(name);
@@ -909,7 +1074,7 @@ export default function ExcalidrawWrapper({
     // Used by CONNECT_NODES actions (from generate_full_architecture streaming
     // and the connect_nodes tool). Looks the endpoints up in the registry /
     // canvas and binds an arrow between them so the diagram is fully wired.
-    const drawConnection = useCallback((fromName: string, toName: string, label = "") => {
+    const drawConnection = useCallback((fromName: string, toName: string, label = "", retriesLeft = 8) => {
         const api = excalidrawRef.current;
         if (!api) return;
 
@@ -937,7 +1102,13 @@ export default function ExcalidrawWrapper({
         const a = findShape(fromName);
         const b = findShape(toName);
         if (!a || !b) {
-            console.warn(`[FlowState] ⚠️ CONNECT skipped — missing "${!a ? fromName : toName}"`);
+            // Endpoint node may not have rendered yet — retry a few times before
+            // giving up, so streamed graphs always end up fully connected.
+            if (retriesLeft > 0) {
+                setTimeout(() => drawConnection(fromName, toName, label, retriesLeft - 1), 250);
+            } else {
+                console.warn(`[FlowState] ⚠️ CONNECT skipped — missing "${!a ? fromName : toName}"`);
+            }
             return;
         }
 
@@ -949,23 +1120,41 @@ export default function ExcalidrawWrapper({
         );
         if (already) return;
 
-        const aCX = (a.x ?? 0) + (a.width ?? 0) / 2;
-        const aCY = (a.y ?? 0) + (a.height ?? 0) / 2;
-        const bCX = (b.x ?? 0) + (b.width ?? 0) / 2;
-        const bCY = (b.y ?? 0) + (b.height ?? 0) / 2;
+        // Anchor the arrow on the BORDER of each shape (not the centre), choosing
+        // the side that faces the other node. Combined with Excalidraw bindings,
+        // this yields clean edges that leave/enter shapes properly like Mermaid.
+        const ax = a.x ?? 0, ay = a.y ?? 0, aw = a.width ?? 0, ah = a.height ?? 0;
+        const bx = b.x ?? 0, by = b.y ?? 0, bw = b.width ?? 0, bh = b.height ?? 0;
+        const aCX = ax + aw / 2, aCY = ay + ah / 2;
+        const bCX = bx + bw / 2, bCY = by + bh / 2;
+
+        // Pick a border point on `rect` facing point (tx,ty).
+        const borderPoint = (rx: number, ry: number, rw: number, rh: number, tx: number, ty: number) => {
+            const cx = rx + rw / 2, cy = ry + rh / 2;
+            const dx = tx - cx, dy = ty - cy;
+            if (dx === 0 && dy === 0) return { x: cx, y: cy };
+            // Scale the direction vector to the rectangle border.
+            const scaleX = dx !== 0 ? (rw / 2) / Math.abs(dx) : Infinity;
+            const scaleY = dy !== 0 ? (rh / 2) / Math.abs(dy) : Infinity;
+            const s = Math.min(scaleX, scaleY);
+            return { x: cx + dx * s, y: cy + dy * s };
+        };
+
+        const start = borderPoint(ax, ay, aw, ah, bCX, bCY);
+        const end = borderPoint(bx, by, bw, bh, aCX, aCY);
 
         const arrowConverted = convertToExcalidrawElements([{
             type: "arrow" as const,
             id: crypto.randomUUID(),
-            x: aCX, y: aCY,
-            width: bCX - aCX,
-            height: bCY - aCY,
-            points: [[0, 0], [bCX - aCX, bCY - aCY]] as any,
+            x: start.x, y: start.y,
+            width: end.x - start.x,
+            height: end.y - start.y,
+            points: [[0, 0], [end.x - start.x, end.y - start.y]] as any,
             strokeColor: "#64748b",
             strokeWidth: 2,
             roughness: 0,
-            startBinding: { elementId: a.id, focus: 0, gap: 6 },
-            endBinding: { elementId: b.id, focus: 0, gap: 6 },
+            startBinding: { elementId: a.id, focus: 0, gap: 4 },
+            endBinding: { elementId: b.id, focus: 0, gap: 4 },
             endArrowhead: "arrow" as any,
             ...(label ? {
                 label: { text: label, fontSize: 11, fontFamily: 2, strokeColor: "#64748b" },
@@ -978,50 +1167,216 @@ export default function ExcalidrawWrapper({
         console.log(`[FlowState] 🔗 connected "${fromName}" → "${toName}"`);
     }, [excalidrawRef]);
 
-    // ── Draw a full graph ({nodes, edges}) with the same live streaming feel ──
-    // Used by "Generate from Prompt" and the Templates gallery. Nodes are queued
-    // (parent = first upstream edge) then edges are drawn once nodes settle.
+    // ── Register a node-type icon (as an Excalidraw image) inside the node ────
+    // Returns the image element(s) to append, or [] if the type has no icon.
+    const addNodeIcon = useCallback((type: string, S: any, nx: number, ny: number): any[] => {
+        const api = excalidrawRef.current;
+        if (!api || !hasIcon(type)) return [];
+        try {
+            const dataUrl = buildIconDataUrl(type, S.stroke);
+            if (!dataUrl) return [];
+            const fileId = `icon_${type}` as any;
+            // Register the image data once; Excalidraw dedups by fileId.
+            api.addFiles([{
+                id: fileId,
+                mimeType: "image/svg+xml",
+                dataURL: dataUrl as any,
+                created: Date.now(),
+            } as any]);
+            const ICON = 22;
+            const now = Date.now();
+            // Build the image element directly (a well-defined Excalidraw shape),
+            // avoiding convertToExcalidrawElements which doesn't handle images.
+            const imgEl: any = {
+                id: crypto.randomUUID(),
+                type: "image",
+                x: nx + 10,
+                y: ny + 10,
+                width: ICON,
+                height: ICON,
+                angle: 0,
+                strokeColor: "transparent",
+                backgroundColor: "transparent",
+                fillStyle: "solid",
+                strokeWidth: 1,
+                strokeStyle: "solid",
+                roughness: 0,
+                opacity: 100,
+                groupIds: [],
+                frameId: null,
+                roundness: null,
+                seed: Math.floor(Math.random() * 1e9),
+                version: 1,
+                versionNonce: Math.floor(Math.random() * 1e9),
+                isDeleted: false,
+                boundElements: null,
+                updated: now,
+                link: null,
+                locked: false,
+                status: "saved",
+                fileId,
+                scale: [1, 1],
+            };
+            currentDiagramIdsRef.current.add(imgEl.id);
+            return [imgEl];
+        } catch (e) {
+            console.warn("[FlowState] icon add failed:", e);
+            return [];
+        }
+    }, [excalidrawRef]);
+
+    // ── Draw one node at an ABSOLUTE position (no parent-relative placement) ──
+    // Returns the created shape's id, or null if it was a duplicate.
+    const _drawNodeAt = useCallback((
+        name: string, type: string, x: number, y: number,
+    ): string | null => {
+        const api = excalidrawRef.current;
+        if (!api) return null;
+        if (drawnNamesRef.current.has(name)) {
+            return nodeIdRegistry.current.get(name) ?? null;
+        }
+        const S = getStyle(type);
+        const nodeId = crypto.randomUUID();
+        const converted = convertToExcalidrawElements([{
+            type: S.shape as any,
+            id: nodeId,
+            x: Math.round(x), y: Math.round(y),
+            width: S.w, height: S.h,
+            strokeColor: S.stroke,
+            backgroundColor: S.bg,
+            fillStyle: S.fillStyle as any,
+            strokeWidth: S.strokeWidth,
+            strokeStyle: S.strokeStyle as any,
+            roughness: 0,
+            roundness: S.roundness,
+            label: {
+                text: name,
+                fontSize: S.labelSize,
+                fontFamily: 2,
+                textAlign: "center" as const,
+                verticalAlign: "middle" as const,
+                strokeColor: S.labelColor,
+            },
+        }]);
+        nodeIdRegistry.current.set(name, nodeId);
+        drawnNamesRef.current.add(name);
+        currentDiagramIdsRef.current.add(nodeId);
+
+        // Add a professional vector icon in the top-left corner of the node.
+        const extra = addNodeIcon(type, S, Math.round(x), Math.round(y));
+
+        const liveEls = api.getSceneElements().filter((e: any) => !e.isDeleted) as any[];
+        api.updateScene({ elements: [...liveEls, ...converted, ...extra] });
+        drawnBoxesRef.current.push({ x, y, width: S.w, height: S.h, type: "rectangle", isDeleted: false });
+        lastDrawTimeRef.current = Date.now();
+        return nodeId;
+    }, [excalidrawRef, addNodeIcon]);
+
+    // ── Draw a full graph ({nodes, edges}) with a clean, non-overlapping,
+    // layered grid layout. Nodes on the same layer spread horizontally and are
+    // centred; nodes stream in one-by-one for a live-building feel, then edges
+    // are drawn once every node exists.
     const drawGraph = useCallback((graph: {
         nodes: { name: string; type: string; layer?: number }[];
         edges: { from: string; to: string; label?: string }[];
     }) => {
+        const api = excalidrawRef.current;
+        if (!api) return;
         const nodes = graph.nodes ?? [];
         const edges = graph.edges ?? [];
         if (nodes.length === 0) return;
 
-        // New diagram → reset the current-diagram tracker.
+        // Fresh diagram → reset trackers so we don't dedup against a prior one.
         currentDiagramIdsRef.current = new Set();
 
-        // First upstream neighbour per node → gives the draw engine a parent.
-        const incoming: Record<string, string> = {};
-        for (const e of edges) {
-            if (e.to && e.from && !(e.to in incoming)) incoming[e.to] = e.from;
-        }
+        // Compute a crossing-minimised layered layout (dagre/Mermaid-style).
+        const { positions } = computeLayeredLayout(
+            { nodes, edges },
+            (t) => { const s = getStyle(t); return { w: s.w, h: s.h }; },
+        );
 
-        // Queue nodes ordered by layer (top-to-bottom).
-        const ordered = [...nodes].sort((a, b) => (a.layer ?? 0) - (b.layer ?? 0));
-        for (const n of ordered) {
-            const parent = incoming[n.name] ?? "";
-            handleAddNode({
-                action: "ADD_NODE",
-                node_name: n.name,
-                node_type: n.type,
-                connected_to: parent,
-                placement: parent ? "bottom" : "",
-            } as AddNodePayload);
-        }
+        // Offset the whole diagram to a comfortable origin, to the right of any
+        // existing content so we never draw on top of a previous diagram.
+        const liveShapes = api.getSceneElements().filter(
+            (e: any) => !e.isDeleted && e.type !== "arrow" && e.type !== "text",
+        ) as any[];
+        const originX = liveShapes.length
+            ? Math.max(...liveShapes.map((e: any) => (e.x ?? 0) + (e.width ?? 0))) + 300
+            : 320;
+        const originY = 140;
 
-        // After nodes render, draw all edges (including cross-links). The draw
-        // queue drains at ~400ms/node, so schedule edges comfortably after.
-        const edgeStart = 500 + ordered.length * 450;
-        edges.forEach((e, i) => {
-            setTimeout(() => drawConnection(e.from, e.to, e.label ?? ""), edgeStart + i * 150);
+        const placed = positions.map((p) => ({ ...p, x: p.x + originX, y: p.y + originY }));
+
+        // Stream nodes in one at a time for a live "building" feel.
+        placed.forEach((p, i) => {
+            setTimeout(() => _drawNodeAt(p.name, p.type, p.x, p.y), i * 150);
         });
-    }, [handleAddNode, drawConnection]);
+
+        // Once every node exists, draw all edges (bound so they route to edges,
+        // not centres), then fit the view to the new diagram.
+        const edgeStart = placed.length * 150 + 250;
+        edges.forEach((e, i) => {
+            setTimeout(() => drawConnection(e.from, e.to, e.label ?? ""), edgeStart + i * 110);
+        });
+        setTimeout(() => {
+            try {
+                const allEls = api.getSceneElements().filter((el: any) => !el.isDeleted);
+                const ids = currentDiagramIdsRef.current;
+                const target = ids.size > 0 ? allEls.filter((el: any) => ids.has(el.id)) : allEls;
+                if (target.length > 0) api.scrollToContent(target as any, { animate: true, fitToContent: true });
+            } catch { /* noop */ }
+            forceSaveRef.current?.();
+        }, edgeStart + edges.length * 110 + 400);
+    }, [excalidrawRef, _drawNodeAt, drawConnection]);
+
+    // ── Buffer for full-architecture streaming (between DIAGRAM_START/COMPLETE) ─
+    // When the AI generates a whole system, the backend streams the nodes and
+    // edges wrapped in diagram_start / diagram_complete markers. We collect them
+    // and run the batch through drawGraph so it gets the crossing-free layout,
+    // instead of drawing each node parent-relative (which tangles).
+    const diagramBufferRef = useRef<{
+        active: boolean;
+        nodes: { name: string; type: string }[];
+        edges: { from: string; to: string; label?: string }[];
+    }>({ active: false, nodes: [], edges: [] });
 
     // ── Unified action dispatcher — routes AI actions to the right handler ─────
     const handleAction = useCallback((payload: AddNodePayload) => {
         const action = (payload as any).action;
+
+        // ── Full-architecture stream lifecycle ──────────────────────────────
+        if (action === "DIAGRAM_START") {
+            diagramBufferRef.current = { active: true, nodes: [], edges: [] };
+            return;
+        }
+        if (action === "DIAGRAM_COMPLETE") {
+            const buf = diagramBufferRef.current;
+            diagramBufferRef.current = { active: false, nodes: [], edges: [] };
+            if (buf.nodes.length > 0) {
+                // Render the whole buffered graph with the auto-layout engine.
+                drawGraph({ nodes: buf.nodes, edges: buf.edges });
+            }
+            return;
+        }
+
+        // While a diagram is streaming, buffer instead of drawing immediately.
+        if (diagramBufferRef.current.active) {
+            if (action === "ADD_NODE") {
+                diagramBufferRef.current.nodes.push({
+                    name: (payload as any).node_name ?? "Node",
+                    type: (payload as any).node_type ?? "server",
+                });
+            } else if (action === "CONNECT_NODES") {
+                diagramBufferRef.current.edges.push({
+                    from: (payload as any).from_node ?? "",
+                    to: (payload as any).to_node ?? "",
+                    label: (payload as any).label ?? "",
+                });
+            }
+            return;
+        }
+
+        // ── Standalone actions (single node add, single connect) ────────────
         if (action === "CONNECT_NODES") {
             // Defer slightly so both endpoint nodes are guaranteed drawn first.
             const from = (payload as any).from_node ?? "";
@@ -1032,7 +1387,7 @@ export default function ExcalidrawWrapper({
         }
         // ADD_NODE (and unknown node-like actions) → draw queue
         handleAddNode(payload);
-    }, [handleAddNode, drawConnection]);
+    }, [handleAddNode, drawConnection, drawGraph]);
 
     // ── AI Tools panel state + helpers ────────────────────────────────────────
     const [isAIToolsOpen, setIsAIToolsOpen] = React.useState(false);
@@ -1044,8 +1399,15 @@ export default function ExcalidrawWrapper({
         if (!api) return [];
         const els = api.getSceneElements().filter((e: any) => !e.isDeleted) as any[];
         const out: { name: string; type: string }[] = [];
+        // Map every element id → its type so we can tell whether a bound text
+        // label belongs to a SHAPE (a real node) or an ARROW (an edge label).
+        const typeById = new Map<string, string>();
+        els.forEach((el: any) => typeById.set(el.id, el.type));
         els.forEach((el: any) => {
             if (el.type === "text" && el.containerId && el.text) {
+                // Skip labels bound to arrows — those are edge labels, not nodes.
+                const containerType = typeById.get(el.containerId);
+                if (containerType === "arrow") return;
                 out.push({ name: el.text.trim(), type: "server" });
             }
         });

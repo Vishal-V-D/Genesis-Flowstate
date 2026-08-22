@@ -76,6 +76,9 @@ export interface HistoryMessage {
   text: string;
   timestamp: number;
   audioUrl?: string;
+  // True while the transcript is still streaming in (word-by-word), false/absent
+  // once the turn is complete. Lets the UI show a live "typing" state.
+  streaming?: boolean;
 }
 
 export type SessionStatus =
@@ -140,6 +143,13 @@ export function useAISession({
   const transcriptTimer   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sessionIDRef      = useRef(0);
   const connectingRef     = useRef(false);
+  // Holds the latest `start` fn so the WS message handler can trigger a
+  // reconnect without a definition-order/TDZ problem.
+  const startRef          = useRef<(() => Promise<void>) | null>(null);
+  // True only when the USER explicitly stops the session. While false, an
+  // unexpected socket close triggers an automatic reconnect so the session
+  // stays alive until the user decides to end it.
+  const userStoppedRef    = useRef(false);
   const lastSizeRef       = useRef(0);
   const lastTimeRef       = useRef(0);
   const pcmBufRef         = useRef<Int16Array[]>([]);
@@ -439,6 +449,14 @@ export function useAISession({
           const msg = JSON.parse(evt.data as string);
 
           if (msg.type === "status") {
+            // Server asked us to reconnect (transient Gemini 1011). Restart the
+            // session quietly so the conversation resumes without a visible error.
+            if (msg.status === "reconnect") {
+              console.log("[AI] ↻ server requested reconnect");
+              try { wsRef.current?.close(); } catch { }
+              setTimeout(() => { startRef.current?.().catch(() => { }); }, 800);
+              return;
+            }
             updateStatus(msg.status as SessionStatus);
             if (msg.status === "ai_done") {
               finalizeVoice();
@@ -450,23 +468,50 @@ export function useAISession({
             return;
           }
 
+          // ── Live streaming transcript fragment ──────────────────────────
+          // Append to the in-progress bubble for this role so the chat panel
+          // updates word-by-word while the AI (or user) speaks.
+          if (msg.type === "transcript_delta" && msg.text) {
+            const frag = msg.text as string;
+            const role = (msg.role ?? "model") as "model" | "user";
+            if (role === "model") {
+              setTranscript((t) => (t + frag).slice(-400));
+              if (transcriptTimer.current) clearTimeout(transcriptTimer.current);
+            }
+            setHistory(prev => {
+              const last = prev[prev.length - 1];
+              // Extend the current streaming bubble of the same role.
+              if (last && last.role === role && last.streaming) {
+                const next = [...prev];
+                next[next.length - 1] = { ...last, text: last.text + frag };
+                return next;
+              }
+              // Otherwise start a new streaming bubble.
+              return [...prev, { role, text: frag, timestamp: Date.now(), streaming: true }];
+            });
+            return;
+          }
+
+          // ── Turn-complete transcript — finalize the streaming bubble ────────
           if (msg.type === "transcript" && msg.text) {
             const text = msg.text as string;
             const role = (msg.role ?? "model") as "model" | "user";
             if (role === "model") {
               setTranscript(text);
               onTranscript?.(text);
-              // Clear stale transcript after silence
               if (transcriptTimer.current) clearTimeout(transcriptTimer.current);
               transcriptTimer.current = setTimeout(() => setTranscript(""), 6000);
             }
             setHistory(prev => {
               const last = prev[prev.length - 1];
-              if (last && last.role === role && !last.audioUrl) {
+              // Finalize the streaming bubble with the authoritative full text.
+              if (last && last.role === role && last.streaming) {
                 const next = [...prev];
-                next[next.length - 1] = { ...last, text };
+                next[next.length - 1] = { ...last, text, streaming: false };
                 return next;
               }
+              // No streaming bubble (e.g. typed text) → append a fresh one.
+              if (last && last.role === role && last.text === text && !last.streaming) return prev;
               return [...prev, { role, text, timestamp: Date.now() }];
             });
             return;
@@ -475,6 +520,13 @@ export function useAISession({
           if (msg.action) {
             console.log(`[AI] 🎯 ${msg.action} ${msg.node_name ?? ""}`);
             onAddNode?.(msg as AddNodePayload);
+            return;
+          }
+
+          // Full-architecture streaming markers — forwarded so the canvas can
+          // batch the streamed nodes/edges through the auto-layout engine.
+          if (msg.type === "diagram_start" || msg.type === "diagram_complete") {
+            onAddNode?.({ ...msg, action: msg.type.toUpperCase() } as AddNodePayload);
             return;
           }
 
@@ -498,12 +550,20 @@ export function useAISession({
 
       ws.onclose = (e) => {
         console.log(`[AI] WS closed code=${e.code}`);
-        if (!connectingRef.current) {
+        wsRef.current = null;
+        // If the user did NOT explicitly stop, keep the session alive by
+        // reconnecting automatically (with a short backoff). The connection
+        // should only end when the user chooses to stop.
+        if (!userStoppedRef.current) {
+          console.log("[AI] ↻ unexpected close — auto-reconnecting");
+          setTimeout(() => {
+            if (!userStoppedRef.current) startRef.current?.().catch(() => { });
+          }, 1000);
+        } else if (!connectingRef.current) {
           updateStatus("stopped");
           stopMic();
           stopCanvasLoop();
         }
-        wsRef.current = null;
       };
     });
   }, [
@@ -513,6 +573,7 @@ export function useAISession({
 
   // ── Stop ───────────────────────────────────────────────────────────────────
   const stop = useCallback(() => {
+    userStoppedRef.current = true;  // user chose to stop → no auto-reconnect
     sessionIDRef.current++;
     stopMic();
     stopCanvasLoop();
@@ -540,6 +601,7 @@ export function useAISession({
 
     const myID = sessionIDRef.current;
     connectingRef.current = true;
+    userStoppedRef.current = false;  // starting → allow auto-reconnect
 
     try {
       updateStatus("requesting_permissions");
@@ -577,6 +639,9 @@ export function useAISession({
       connectingRef.current = false;
     }
   }, [status, updateStatus, openWebSocket, startMic, stopMic, stopCanvasLoop]);
+
+  // Keep the ref pointing at the latest start fn for the reconnect handler.
+  useEffect(() => { startRef.current = start; }, [start]);
 
   useEffect(() => () => { stop(); }, [stop]);
 

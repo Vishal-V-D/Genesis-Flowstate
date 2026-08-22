@@ -13,7 +13,14 @@ import { prism } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8080";
+// Prefer an explicit HTTP backend URL; otherwise derive it from the WS URL so
+// this page targets the same backend host (ws→http, wss→https).
+const BACKEND_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  (process.env.NEXT_PUBLIC_BACKEND_WS_URL || "ws://localhost:8000")
+    .replace(/^wss:/, "https:")
+    .replace(/^ws:/, "http:")
+    .replace(/\/+$/, "");
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface GeneratedFile {

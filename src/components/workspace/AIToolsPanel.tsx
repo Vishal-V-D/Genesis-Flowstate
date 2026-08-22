@@ -13,11 +13,15 @@
  * callback so all rendering stays in ExcalidrawWrapper's draw engine.
  */
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
     Sparkles, X, Wand2, LayoutTemplate, ShieldCheck, DollarSign,
-    Loader2, AlertTriangle, CheckCircle2, Info, Download,
+    Loader2, AlertTriangle, CheckCircle2, Info, Download, Search, Layers,
 } from "lucide-react";
+import {
+    ARCHITECTURE_TEMPLATES, TEMPLATE_CATEGORIES, searchTemplates,
+    type Template,
+} from "./architectureTemplates";
 
 // Backend base URL, derived from the WS URL so we hit the same host over HTTPS.
 const WS = process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8000";
@@ -42,102 +46,18 @@ interface AIToolsPanelProps {
 
 type Tab = "generate" | "templates" | "review" | "cost";
 
-// ── Starter templates — full connected graphs, drawn instantly ────────────────
-const TEMPLATES: { id: string; label: string; desc: string; graph: Graph }[] = [
-    {
-        id: "3tier",
-        label: "3-Tier Web App",
-        desc: "Classic web / app / database layering behind a load balancer.",
-        graph: {
-            title: "3-Tier Web App",
-            nodes: [
-                { name: "Users", type: "client", layer: 0 },
-                { name: "Load Balancer", type: "loadbalancer", layer: 1 },
-                { name: "Web Server", type: "server", layer: 2 },
-                { name: "App Server", type: "server", layer: 2 },
-                { name: "Primary DB", type: "database", layer: 3 },
-            ],
-            edges: [
-                { from: "Users", to: "Load Balancer", label: "HTTPS" },
-                { from: "Load Balancer", to: "Web Server" },
-                { from: "Web Server", to: "App Server", label: "API" },
-                { from: "App Server", to: "Primary DB", label: "SQL" },
-            ],
-        },
-    },
-    {
-        id: "serverless",
-        label: "Serverless API",
-        desc: "API Gateway + functions + managed data, fully event-driven.",
-        graph: {
-            title: "Serverless API",
-            nodes: [
-                { name: "Client", type: "client", layer: 0 },
-                { name: "API Gateway", type: "gateway", layer: 1 },
-                { name: "Auth", type: "auth", layer: 1 },
-                { name: "Function", type: "microservice", layer: 2 },
-                { name: "NoSQL DB", type: "database", layer: 3 },
-                { name: "Object Storage", type: "storage", layer: 3 },
-            ],
-            edges: [
-                { from: "Client", to: "API Gateway", label: "HTTPS" },
-                { from: "API Gateway", to: "Auth", label: "verify" },
-                { from: "API Gateway", to: "Function", label: "invoke" },
-                { from: "Function", to: "NoSQL DB" },
-                { from: "Function", to: "Object Storage" },
-            ],
-        },
-    },
-    {
-        id: "microservices",
-        label: "Microservices",
-        desc: "Gateway routing to independent services with a message queue.",
-        graph: {
-            title: "Microservices Platform",
-            nodes: [
-                { name: "Client", type: "client", layer: 0 },
-                { name: "API Gateway", type: "gateway", layer: 1 },
-                { name: "Orders Service", type: "microservice", layer: 2 },
-                { name: "Payments Service", type: "microservice", layer: 2 },
-                { name: "Message Queue", type: "queue", layer: 2 },
-                { name: "Orders DB", type: "database", layer: 3 },
-                { name: "Cache", type: "cache", layer: 3 },
-            ],
-            edges: [
-                { from: "Client", to: "API Gateway" },
-                { from: "API Gateway", to: "Orders Service" },
-                { from: "API Gateway", to: "Payments Service" },
-                { from: "Orders Service", to: "Message Queue", label: "publish" },
-                { from: "Payments Service", to: "Message Queue", label: "subscribe" },
-                { from: "Orders Service", to: "Orders DB" },
-                { from: "Orders Service", to: "Cache" },
-            ],
-        },
-    },
-    {
-        id: "eventdriven",
-        label: "Event-Driven Pipeline",
-        desc: "Ingest → queue → processors → storage, decoupled and scalable.",
-        graph: {
-            title: "Event-Driven Pipeline",
-            nodes: [
-                { name: "Producers", type: "client", layer: 0 },
-                { name: "Ingest Gateway", type: "gateway", layer: 1 },
-                { name: "Event Queue", type: "queue", layer: 2 },
-                { name: "Processor", type: "microservice", layer: 2 },
-                { name: "Analytics DB", type: "database", layer: 3 },
-                { name: "Data Lake", type: "storage", layer: 3 },
-            ],
-            edges: [
-                { from: "Producers", to: "Ingest Gateway" },
-                { from: "Ingest Gateway", to: "Event Queue", label: "emit" },
-                { from: "Event Queue", to: "Processor", label: "consume" },
-                { from: "Processor", to: "Analytics DB" },
-                { from: "Processor", to: "Data Lake" },
-            ],
-        },
-    },
-];
+// Format a number as localized currency using the browser's Intl support.
+function formatMoney(amount: number, currency: string): string {
+    try {
+        return new Intl.NumberFormat(undefined, {
+            style: "currency",
+            currency: currency || "USD",
+            maximumFractionDigits: 2,
+        }).format(amount ?? 0);
+    } catch {
+        return `${(amount ?? 0).toLocaleString()} ${currency}`;
+    }
+}
 
 const SEVERITY_STYLES: Record<string, { color: string; icon: React.ReactNode }> = {
     high: { color: "text-red-600 bg-red-50 border-red-200", icon: <AlertTriangle size={15} /> },
@@ -155,6 +75,28 @@ export default function AIToolsPanel({
 
     const [review, setReview] = useState<{ summary: string; findings: any[] } | null>(null);
     const [cost, setCost] = useState<any | null>(null);
+
+    // Template search + optional category filter.
+    const [templateQuery, setTemplateQuery] = useState("");
+    const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+    // Cost estimate target currency.
+    const [currency, setCurrency] = useState("USD");
+
+    // Filter templates by search text, then by category. Group the result by
+    // category for a clean sectioned list.
+    const groupedTemplates = useMemo(() => {
+        let list = searchTemplates(templateQuery);
+        if (activeCategory) list = list.filter((t) => t.category === activeCategory);
+        const groups: Record<string, Template[]> = {};
+        for (const t of list) (groups[t.category] ??= []).push(t);
+        return groups;
+    }, [templateQuery, activeCategory]);
+
+    const totalMatches = useMemo(
+        () => Object.values(groupedTemplates).reduce((s, arr) => s + arr.length, 0),
+        [groupedTemplates],
+    );
 
     if (!isOpen) return null;
 
@@ -209,7 +151,7 @@ export default function AIToolsPanel({
             const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/cost-estimate`, {
                 method: "POST",
                 headers: authHeaders(),
-                body: JSON.stringify({ nodes: getCanvasNodes() }),
+                body: JSON.stringify({ nodes: getCanvasNodes(), currency }),
             });
             if (!res.ok) throw new Error(`Cost estimate failed (${res.status})`);
             setCost(await res.json());
@@ -294,22 +236,74 @@ export default function AIToolsPanel({
 
                     {/* TEMPLATES */}
                     {tab === "templates" && (
-                        <div className="space-y-2.5">
-                            {TEMPLATES.map((t) => (
+                        <div>
+                            {/* Search */}
+                            <div className="relative mb-3">
+                                <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                <input
+                                    value={templateQuery}
+                                    onChange={(e) => setTemplateQuery(e.target.value)}
+                                    placeholder="Search templates — netflix, payments, chat…"
+                                    className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-gray-300 text-[13px] text-gray-900 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+                                />
+                            </div>
+
+                            {/* Category chips */}
+                            <div className="flex flex-wrap gap-1.5 mb-4">
                                 <button
-                                    key={t.id}
-                                    onClick={() => handleTemplate(t.graph)}
-                                    className="w-full text-left p-3.5 rounded-lg border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group"
+                                    onClick={() => setActiveCategory(null)}
+                                    className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${activeCategory === null ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
                                 >
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-[13px] font-semibold text-gray-900">{t.label}</span>
-                                        <span className="text-[11px] text-gray-400 group-hover:text-indigo-600">
-                                            {t.graph.nodes.length} nodes
-                                        </span>
-                                    </div>
-                                    <p className="text-[12px] text-gray-500 mt-1">{t.desc}</p>
+                                    All
                                 </button>
-                            ))}
+                                {TEMPLATE_CATEGORIES.map((c) => (
+                                    <button
+                                        key={c}
+                                        onClick={() => setActiveCategory(activeCategory === c ? null : c)}
+                                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${activeCategory === c ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`}
+                                    >
+                                        {c}
+                                    </button>
+                                ))}
+                            </div>
+
+                            <p className="text-[11px] text-gray-400 mb-2">{totalMatches} templates</p>
+
+                            {totalMatches === 0 && (
+                                <p className="text-[12px] text-gray-500 py-6 text-center">No templates match “{templateQuery}”.</p>
+                            )}
+
+                            {/* Grouped, searchable list */}
+                            <div className="space-y-4">
+                                {Object.entries(groupedTemplates).map(([category, items]) => (
+                                    <div key={category}>
+                                        <div className="flex items-center gap-1.5 mb-2">
+                                            <Layers size={13} className="text-gray-400" />
+                                            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{category}</span>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {items.map((t) => (
+                                                <button
+                                                    key={t.id}
+                                                    onClick={() => handleTemplate(t.graph)}
+                                                    className="w-full text-left p-3.5 rounded-lg border border-gray-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-all group"
+                                                >
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="text-[13px] font-semibold text-gray-900">{t.label}</span>
+                                                        <span className="flex items-center gap-1.5 shrink-0">
+                                                            {t.scale === "large" && (
+                                                                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-fuchsia-100 text-fuchsia-700 font-medium">Large</span>
+                                                            )}
+                                                            <span className="text-[11px] text-gray-400 group-hover:text-indigo-600">{t.graph.nodes.length} nodes</span>
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-[12px] text-gray-500 mt-1">{t.desc}</p>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
 
@@ -351,6 +345,27 @@ export default function AIToolsPanel({
                     {/* COST */}
                     {tab === "cost" && (
                         <div>
+                            {/* Currency selector */}
+                            <div className="flex items-center gap-2 mb-3">
+                                <span className="text-[12px] text-gray-500">Currency</span>
+                                <select
+                                    value={currency}
+                                    onChange={(e) => setCurrency(e.target.value)}
+                                    className="flex-1 border border-gray-300 rounded-lg px-2.5 py-2 text-[13px] text-gray-900 outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500 bg-white"
+                                >
+                                    <option value="USD">USD — US Dollar ($)</option>
+                                    <option value="INR">INR — Indian Rupee (₹)</option>
+                                    <option value="EUR">EUR — Euro (€)</option>
+                                    <option value="GBP">GBP — British Pound (£)</option>
+                                    <option value="JPY">JPY — Japanese Yen (¥)</option>
+                                    <option value="AUD">AUD — Australian Dollar</option>
+                                    <option value="CAD">CAD — Canadian Dollar</option>
+                                    <option value="SGD">SGD — Singapore Dollar</option>
+                                    <option value="AED">AED — UAE Dirham</option>
+                                    <option value="BRL">BRL — Brazilian Real</option>
+                                    <option value="CNY">CNY — Chinese Yuan</option>
+                                </select>
+                            </div>
                             <button
                                 onClick={handleCost}
                                 disabled={busy}
@@ -363,9 +378,10 @@ export default function AIToolsPanel({
                                     <div className="text-center p-4 bg-gradient-to-br from-amber-50 to-orange-50 rounded-xl border border-amber-100">
                                         <p className="text-[11px] text-gray-500">Estimated monthly cost</p>
                                         <p className="text-[28px] font-bold text-gray-900">
-                                            ${cost.monthly_total?.toLocaleString()}
+                                            {formatMoney(cost.monthly_total, cost.currency)}
                                             <span className="text-[13px] font-normal text-gray-500"> {cost.currency}/mo</span>
                                         </p>
+                                        <p className="text-[10px] text-gray-400 mt-1">Based on current AWS pricing · live FX</p>
                                     </div>
                                     {cost.assumptions && (
                                         <p className="text-[11px] text-gray-400 mt-2 italic">{cost.assumptions}</p>
@@ -377,7 +393,7 @@ export default function AIToolsPanel({
                                                     <p className="font-medium text-gray-900 truncate">{it.component}</p>
                                                     <p className="text-gray-400 text-[11px] truncate">{it.service}</p>
                                                 </div>
-                                                <span className="font-semibold text-gray-900 shrink-0 ml-2">${it.monthly_cost}</span>
+                                                <span className="font-semibold text-gray-900 shrink-0 ml-2">{formatMoney(it.monthly_cost, cost.currency)}</span>
                                             </div>
                                         ))}
                                     </div>
