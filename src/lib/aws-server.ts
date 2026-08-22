@@ -7,9 +7,19 @@ const clientConfig: any = {
     region,
 };
 
-// Check for local credentials (e.g. during local run or in env configuration).
-// When deployed to production AWS hosts, the SDK automatically retrieves credentials from the environment or IAM Role.
-if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+// Credential handling:
+// - In a managed AWS runtime (Amplify SSR / Lambda), credentials are TEMPORARY
+//   and include a session token. We must NOT set only accessKeyId+secretKey
+//   without the session token, or requests fail with "security token invalid".
+//   In that case we leave `credentials` unset so the SDK's default provider
+//   chain picks up the full temporary credentials (incl. session token) itself.
+// - Only for a true long-lived local key pair (no session token present) do we
+//   pass explicit credentials.
+if (
+    process.env.AWS_ACCESS_KEY_ID &&
+    process.env.AWS_SECRET_ACCESS_KEY &&
+    !process.env.AWS_SESSION_TOKEN
+) {
     clientConfig.credentials = {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
