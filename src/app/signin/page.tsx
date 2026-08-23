@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
 import { signInUser } from "@/lib/aws-client";
+import AuthBackground from "@/components/auth/AuthBackground";
 
 export default function SignIn() {
     const router = useRouter();
@@ -54,8 +55,9 @@ export default function SignIn() {
     };
 
     return (
-        <div className="min-h-screen bg-[#f0f4f9] flex items-center justify-center p-4 selection:bg-google-blue/20">
-            <div className="w-full max-w-[450px] bg-white rounded-[24px] shadow-[0_8px_40px_rgba(0,0,0,0.06)] p-10 border border-gray-100 flex flex-col pt-12">
+        <div className="relative min-h-screen flex items-center justify-center p-4 selection:bg-google-blue/20 overflow-hidden">
+            <AuthBackground mode="signin" />
+            <div className="relative z-10 w-full max-w-[450px] bg-white/95 backdrop-blur-xl rounded-[24px] shadow-[0_20px_70px_rgba(82,39,255,0.15)] p-10 border border-white/60 flex flex-col pt-12">
                 <div className="flex justify-center mb-6">
                     <div className="flex rounded-sm p-1 px-2">
                         <span className="text-google-blue font-[300] text-xl">K</span>
