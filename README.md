@@ -73,22 +73,53 @@ This tag-based routing approach guarantees minimal overhead, making the interact
 ### Installation
 
 1. Clone the repository:
-   \`\`\`bash
+   ```bash
    git clone https://github.com/Vishal-V-D/Genesis-Flowstate.git
    cd Genesis-Flowstate
-   \`\`\`
+   ```
 
 2. Install dependencies:
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 
-3. Run the development server:
-   \`\`\`bash
+3. Configure environment variables — copy the example and fill it in:
+   ```bash
+   cp .env.example .env
+   ```
+
+   | Variable | Required | Description |
+   |----------|----------|-------------|
+   | `NEXT_PUBLIC_BACKEND_WS_URL` | Yes | Backend WebSocket URL. Local: `ws://localhost:8000`. Deployed: `wss://52-203-146-90.sslip.io` |
+   | `NEXT_PUBLIC_AWS_REGION` | Yes | e.g. `us-east-1` |
+   | `NEXT_PUBLIC_COGNITO_USER_POOL_ID` | Yes | Cognito user pool for auth |
+   | `NEXT_PUBLIC_COGNITO_CLIENT_ID` | Yes | Cognito app client id |
+   | `AWS_REGION` | Server-side | Region for DynamoDB (server routes) |
+   | `AWS_ACCESS_KEY_ID` | Server-side* | AWS key for DynamoDB access |
+   | `AWS_SECRET_ACCESS_KEY` | Server-side* | AWS secret for DynamoDB access |
+
+   \* On AWS Amplify/Lambda the server routes use the attached IAM compute role
+   automatically, so the `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair is only
+   needed for local dev or non-AWS hosts (e.g. Vercel).
+
+4. Run the development server:
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
-4. Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000) with your browser.
+
+> **Backend required:** Genesis talks to the FlowState backend for the live AI,
+> diagram generation, review, cost and artifact features. Run it locally
+> (see [FlowState-Backend](https://github.com/Vishal-V-D/FlowState-Backend)) or
+> point `NEXT_PUBLIC_BACKEND_WS_URL` at the deployed backend
+> `wss://52-203-146-90.sslip.io`.
+
+### Deployment
+
+The frontend is deployed on **AWS Amplify** (Next.js SSR). Pushing to `main`
+auto-triggers a build. Environment variables are configured in the Amplify app
+settings, and an IAM compute role grants the SSR routes DynamoDB access.
 
 ## 🏗️ Project Structure
 
