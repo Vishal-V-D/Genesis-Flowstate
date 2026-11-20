@@ -200,7 +200,7 @@ export default function Home() {
                         transition={{ duration: 0.5, delay: 0.3 }}
                         className="flex flex-col sm:flex-row gap-4 items-center mb-16"
                     >
-                        <Link href="/library" className="flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-200 transition-all text-sm w-full sm:w-auto justify-center">
+                        <Link href="/home" className="flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-200 transition-all text-sm w-full sm:w-auto justify-center">
                             Start designing free <ArrowRight className="w-4 h-4" />
                         </Link>
                         <a href="#sandbox" className="flex items-center gap-2 bg-[#121217] hover:bg-[#181822] text-gray-300 hover:text-white border border-white/[0.08] font-semibold px-6 py-3 rounded-lg transition-all text-sm w-full sm:w-auto justify-center">
@@ -282,7 +282,7 @@ export default function Home() {
                             The multiplayer canvas for engineering teams. Design systems visually and watch FlowState instantly compile your architecture into production-ready code and comprehensive documentation.
                         </p>
                         <div className="flex flex-row gap-4 items-center justify-center pointer-events-auto">
-                            <Link href="/library" className="flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-200 transition-all text-sm justify-center">
+                            <Link href="/home" className="flex items-center gap-2 bg-white text-black font-semibold px-6 py-3 rounded-lg shadow-lg hover:bg-gray-200 transition-all text-sm justify-center">
                                 Start designing free <ArrowRight className="w-4 h-4" />
                             </Link>
                             <a href="#sandbox" className="flex items-center gap-2 bg-[#121217] hover:bg-[#181822] text-gray-300 hover:text-white border border-white/[0.08] font-semibold px-6 py-3 rounded-lg transition-all text-sm justify-center">
@@ -759,7 +759,7 @@ export default function Home() {
                         <Link href="/signin?signup=true" className="bg-white hover:bg-gray-200 text-black font-bold px-6 py-3 rounded-lg shadow-lg transition-all text-xs">
                             Create Free Account
                         </Link>
-                        <Link href="/library" className="border border-white/10 hover:bg-white/5 text-white font-medium px-6 py-3 rounded-lg transition-all text-xs">
+                        <Link href="/home" className="border border-white/10 hover:bg-white/5 text-white font-medium px-6 py-3 rounded-lg transition-all text-xs">
                             Launch Sandbox
                         </Link>
                     </div>

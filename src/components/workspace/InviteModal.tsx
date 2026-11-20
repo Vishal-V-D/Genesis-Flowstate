@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { X, Copy, Check, Globe, Lock, ChevronDown, Link2, Users } from "lucide-react";
-import { getCurrentSession } from "@/lib/aws-client";
+import { getCurrentSession } from "@/lib/supabase-client";
 
 interface InviteModalProps {
     isOpen?: boolean;

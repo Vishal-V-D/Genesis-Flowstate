@@ -12,12 +12,21 @@ html {
     --font-google-sans: 'Google Sans', 'Google Sans Text', system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --background: #ffffff;
-        /* The screenshot is in light mode, let's keep it primarily light or adapt to system */
-        --foreground: #1f2937;
-    }
+html.dark {
+    --background: #131314;
+    --foreground: #e3e3e3;
+}
+
+html.dark body {
+    background: #131314;
+    color: #e6e1e5;
+}
+
+html.dark .bg-mesh {
+    background-image:
+        radial-gradient(circle at 15% 50%, rgba(66, 133, 244, 0.05), transparent 40%),
+        radial-gradient(circle at 85% 30%, rgba(124, 92, 191, 0.05), transparent 40%),
+        radial-gradient(circle at 50% 80%, rgba(45, 139, 110, 0.04), transparent 40%);
 }
 
 body {

@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentSession } from "@/lib/aws-client";
+import { getCurrentSession } from "@/lib/supabase-client";
 
 const BACKEND_WS =
   process.env.NEXT_PUBLIC_BACKEND_WS_URL ?? "ws://localhost:8080";

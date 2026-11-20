@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import NewWorkspaceModal from '@/components/workspace/NewWorkspaceModal';
 import InviteModal from '@/components/workspace/InviteModal';
 import { useAuth } from '@/hooks/useAuth';
-import { getCurrentSession } from '@/lib/aws-client';
+import { getCurrentSession } from '@/lib/supabase-client';
 import LibraryLoading from './loading';
 
 // Colors for the workspaces
@@ -284,16 +284,22 @@ export default function LibraryPage() {
     };
 
     return (
-        <main className="relative z-10 w-full min-h-screen overflow-x-hidden">
+        <main className="relative z-10 w-full min-h-screen overflow-x-hidden bg-[#f8f9fb] dark:bg-dark-bg">
             {/* Top navigation bar */}
-            <header className="absolute top-0 w-full px-8 py-6 flex items-center justify-between z-50">
-                <Link href="/" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors group">
+            <header className="absolute top-0 w-full px-8 py-5 flex items-center justify-between z-50 border-b border-transparent">
+                <Link href="/home" className="flex items-center gap-2 text-gray-500 dark:text-dark-subtle hover:text-gray-900 dark:hover:text-dark-muted transition-colors group">
                     <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                     <span className="text-sm font-medium">Back to Home</span>
                 </Link>
-                <div className="flex items-center gap-2">
-                    <span className="text-gray-900 font-semibold ml-1">FlowState</span>
-                </div>
+                <span className="font-semibold text-[14px] tracking-tight">
+                    <span className="text-google-blue">G</span>
+                    <span className="text-google-red">e</span>
+                    <span className="text-google-yellow">n</span>
+                    <span className="text-google-green">e</span>
+                    <span className="text-google-blue">s</span>
+                    <span className="text-google-red">i</span>
+                    <span className="text-google-yellow">s</span>
+                </span>
 
                 <div className="relative flex items-center gap-4">
                     <button
@@ -316,26 +322,26 @@ export default function LibraryPage() {
                     {showProfileMenu && (
                         <div
                             ref={profileMenuRef}
-                            className="absolute right-0 top-12 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 py-3 z-50 flex flex-col"
+                            className="absolute right-0 top-12 w-64 bg-white dark:bg-dark-card rounded-xl shadow-xl border border-gray-100 dark:border-dark-border py-3 z-50 flex flex-col"
                         >
-                            <div className="px-5 py-3 border-b border-gray-100 flex flex-col mb-2">
-                                <span className="font-semibold text-gray-900 truncate">
+                            <div className="px-5 py-3 border-b border-gray-100 dark:border-dark-border flex flex-col mb-2">
+                                <span className="font-semibold text-gray-900 dark:text-dark-text truncate">
                                     {user.firstName} {user.lastName}
                                 </span>
-                                <span className="text-xs text-gray-500 truncate">{user.email}</span>
+                                <span className="text-xs text-gray-500 dark:text-dark-muted truncate">{user.email}</span>
                             </div>
 
                             <button
                                 onClick={() => router.push('/onboarding')}
-                                className="w-full text-left px-5 py-2.5 hover:bg-gray-50 text-sm text-gray-700 flex items-center gap-3 transition-colors"
+                                className="w-full text-left px-5 py-2.5 hover:bg-gray-50 dark:hover:bg-dark-border text-sm text-gray-700 dark:text-dark-text flex items-center gap-3 transition-colors"
                             >
-                                <Settings className="w-4 h-4 text-gray-400" />
+                                <Settings className="w-4 h-4 text-gray-400 dark:text-dark-subtle" />
                                 <span>Preferences</span>
                             </button>
 
                             <button
                                 onClick={handleSignOut}
-                                className="w-full text-left px-5 py-2.5 hover:bg-red-50 text-sm text-red-600 flex items-center gap-3 transition-colors border-t border-gray-100 mt-2"
+                                className="w-full text-left px-5 py-2.5 hover:bg-red-50 dark:hover:bg-red-500/10 text-sm text-red-600 flex items-center gap-3 transition-colors border-t border-gray-100 dark:border-dark-border mt-2"
                             >
                                 <LogOut className="w-4 h-4" />
                                 <span>Sign out</span>
@@ -346,11 +352,11 @@ export default function LibraryPage() {
             </header>
 
             {/* Main content grid */}
-            <div className="max-w-7xl mx-auto px-8 pt-32 pb-24 min-h-screen flex flex-col justify-start">
+            <div className="w-full px-10 pt-28 pb-24 min-h-screen flex flex-col justify-start">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-12">
                     <div>
-                        <h1 className="text-4xl font-normal text-gray-900 tracking-tight mb-2">Design Library</h1>
-                        <p className="text-gray-500 text-sm">Manage your collaborative canvas diagrams</p>
+                        <h1 className="text-4xl font-normal text-gray-900 dark:text-dark-text tracking-tight mb-2">Design Library</h1>
+                        <p className="text-gray-500 dark:text-dark-muted text-sm">Manage your collaborative canvas diagrams</p>
                     </div>
 
                     {/* Premium Search bar */}
@@ -360,19 +366,19 @@ export default function LibraryPage() {
                             placeholder="Search workspace designs..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-full focus:outline-none focus:border-google-blue focus:ring-1 focus:ring-google-blue/20 text-sm transition-all"
+                            className="w-full pl-10 pr-4 py-3 bg-white dark:bg-dark-card border border-gray-200 dark:border-dark-border text-gray-800 dark:text-dark-text rounded-full focus:outline-none focus:border-google-blue focus:ring-1 focus:ring-google-blue/20 text-sm transition-all"
                         />
                         <Search className="absolute left-4 top-3.5 w-4 h-4 text-gray-400" />
                     </div>
                 </div>
 
                 {filtered.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center py-20 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
-                        <div className="w-16 h-16 rounded-2xl bg-google-blue/10 flex items-center justify-center text-google-blue mb-4">
+                    <div className="flex-1 flex flex-col items-center justify-center py-20 bg-gray-50/50 dark:bg-dark-card/50 rounded-xl border border-dashed border-gray-200 dark:border-dark-border">
+                        <div className="w-16 h-16 rounded-xl bg-google-blue/10 flex items-center justify-center text-google-blue mb-4">
                             <Search className="w-8 h-8" />
                         </div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-1">No designs found</h3>
-                        <p className="text-gray-500 text-sm max-w-xs text-center">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-dark-text mb-1">No designs found</h3>
+                        <p className="text-gray-500 dark:text-dark-muted text-sm max-w-xs text-center">
                             {searchQuery ? "No matches for your search. Try another query." : "Create your first collaborative design to get started."}
                         </p>
                         {!searchQuery && (
@@ -411,16 +417,16 @@ export default function LibraryPage() {
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
-                            className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-gray-100"
+                            className="bg-white dark:bg-dark-card rounded-xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-dark-border"
                         >
-                            <h3 className="text-xl font-semibold text-gray-900 mb-2">Delete workspace?</h3>
-                            <p className="text-gray-500 text-sm mb-6">
+                            <h3 className="text-xl font-semibold text-gray-900 dark:text-dark-text mb-2">Delete workspace?</h3>
+                            <p className="text-gray-500 dark:text-dark-muted text-sm mb-6">
                                 This will permanently delete <strong>{deleteModal.title}</strong>. This action cannot be undone.
                             </p>
                             <div className="flex gap-4 justify-end">
                                 <button
                                     onClick={() => setDeleteModal(null)}
-                                    className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-full transition-colors"
+                                    className="px-5 py-2.5 bg-gray-100 dark:bg-dark-card hover:bg-gray-200 dark:hover:bg-dark-border text-gray-700 dark:text-dark-text text-sm font-medium rounded-full transition-colors"
                                 >
                                     Cancel
                                 </button>
@@ -441,37 +447,37 @@ export default function LibraryPage() {
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
-                            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-gray-100"
+                            className="bg-white dark:bg-dark-card rounded-xl p-8 max-w-md w-full shadow-2xl border border-gray-100 dark:border-dark-border"
                         >
-                            <h3 className="text-xl font-semibold text-gray-900 mb-6 flex items-center gap-3">
+                            <h3 className="text-xl font-semibold text-gray-900 dark:text-dark-text mb-6 flex items-center gap-3">
                                 <Info className="w-5 h-5 text-google-blue" />
                                 <span>Workspace Details</span>
                             </h3>
 
                             <div className="space-y-4 mb-8">
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-400 text-sm">Title</span>
-                                    <span className="text-gray-900 text-sm font-medium">{propertiesModal.title}</span>
+                                <div className="flex justify-between py-2 border-b border-gray-50 dark:border-dark-border">
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Title</span>
+                                    <span className="text-gray-900 dark:text-dark-text text-sm font-medium">{propertiesModal.title}</span>
                                 </div>
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-400 text-sm">Subtitle</span>
+                                <div className="flex justify-between py-2 border-b border-gray-50 dark:border-dark-border">
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Subtitle</span>
                                     <span className="text-gray-900 text-sm font-medium truncate max-w-xs">{propertiesModal.subtitle}</span>
                                 </div>
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-400 text-sm">Workspace ID</span>
+                                <div className="flex justify-between py-2 border-b border-gray-50 dark:border-dark-border">
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Workspace ID</span>
                                     <span className="text-gray-900 text-sm font-mono">{propertiesModal.id}</span>
                                 </div>
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-400 text-sm">Your Role</span>
+                                <div className="flex justify-between py-2 border-b border-gray-50 dark:border-dark-border">
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Your Role</span>
                                     <span className="text-gray-900 text-sm font-medium capitalize">{propertiesModal.role}</span>
                                 </div>
-                                <div className="flex justify-between py-2 border-b border-gray-50">
-                                    <span className="text-gray-400 text-sm">Elements Count</span>
-                                    <span className="text-gray-900 text-sm font-medium">{propertiesModal.nodes}</span>
+                                <div className="flex justify-between py-2 border-b border-gray-50 dark:border-dark-border">
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Elements Count</span>
+                                    <span className="text-gray-900 dark:text-dark-text text-sm font-medium">{propertiesModal.nodes}</span>
                                 </div>
                                 <div className="flex justify-between py-2">
-                                    <span className="text-gray-400 text-sm">Last Synced</span>
-                                    <span className="text-gray-900 text-sm font-medium">{propertiesModal.lastEdited}</span>
+                                    <span className="text-gray-400 dark:text-dark-subtle text-sm">Last Synced</span>
+                                    <span className="text-gray-900 dark:text-dark-text text-sm font-medium">{propertiesModal.lastEdited}</span>
                                 </div>
                             </div>
 
@@ -543,14 +549,14 @@ function WorkspaceCard({
     return (
         <div
             onClick={onClick}
-            className="group relative bg-[#f8f9fa] rounded-[3rem_1rem_2rem_1rem] border border-gray-200/60 p-5 h-72 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between cursor-pointer overflow-hidden"
+            className="group relative bg-[#f8f9fa] dark:bg-dark-card rounded-[3rem_1rem_2rem_1rem] border border-gray-200/60 dark:border-dark-border p-5 h-72 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all flex flex-col justify-between cursor-pointer overflow-hidden"
         >
             <div className="flex items-start justify-between z-10">
                 <div className="flex flex-col gap-1 max-w-[80%]">
-                    <h3 className="font-semibold text-lg text-gray-900 group-hover:text-google-blue transition-colors truncate">
+                    <h3 className="font-semibold text-lg text-gray-900 dark:text-dark-text group-hover:text-google-blue transition-colors truncate">
                         {workspace.title}
                     </h3>
-                    <span className="text-xs text-gray-500 font-medium truncate">{workspace.subtitle}</span>
+                    <span className="text-xs text-gray-500 dark:text-dark-muted font-medium truncate">{workspace.subtitle}</span>
                 </div>
 
                 <div className="relative" ref={menuRef}>
@@ -566,17 +572,17 @@ function WorkspaceCard({
                     </button>
 
                     {isMenuOpen && (
-                        <div className="absolute right-0 top-8 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1.5 z-30">
+                        <div className="absolute right-0 top-8 w-44 bg-white dark:bg-dark-card rounded-xl shadow-lg border border-gray-100 dark:border-dark-border py-1.5 z-30">
                             <button
                                 onClick={(e) => { e.stopPropagation(); onShareClick(); onOpenMenu(null); }}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-xs text-gray-700 flex items-center gap-2"
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-dark-border text-xs text-gray-700 dark:text-dark-text flex items-center gap-2"
                             >
                                 <Users className="w-3.5 h-3.5" />
                                 <span>Collaborators</span>
                             </button>
                             <button
                                 onClick={(e) => { e.stopPropagation(); onPropertiesClick(); onOpenMenu(null); }}
-                                className="w-full text-left px-4 py-2 hover:bg-gray-50 text-xs text-gray-700 flex items-center gap-2"
+                                className="w-full text-left px-4 py-2 hover:bg-gray-50 dark:hover:bg-dark-border text-xs text-gray-700 dark:text-dark-text flex items-center gap-2"
                             >
                                 <Info className="w-3.5 h-3.5" />
                                 <span>Properties</span>
@@ -584,7 +590,7 @@ function WorkspaceCard({
                             {workspace.role === 'owner' && (
                                 <button
                                     onClick={(e) => { e.stopPropagation(); onDeleteClick(); onOpenMenu(null); }}
-                                    className="w-full text-left px-4 py-2 hover:bg-red-50 text-xs text-red-600 flex items-center gap-2 border-t border-gray-50 mt-1"
+                                    className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-500/10 text-xs text-red-600 flex items-center gap-2 border-t border-gray-50 dark:border-dark-border mt-1"
                                 >
                                     <Trash2 className="w-3.5 h-3.5" />
                                     <span>Delete design</span>
@@ -602,7 +608,7 @@ function WorkspaceCard({
                     e.stopPropagation();
                     onClick();
                 }}
-                className="absolute bg-[#f0f2f5] overflow-hidden border border-white/10 shadow-inner z-0 cursor-pointer hover:bg-white transition-colors flex flex-col items-center justify-center p-0 m-0 outline-none"
+                className="absolute bg-[#f0f2f5] dark:bg-dark-bg overflow-hidden border border-white/10 dark:border-dark-border shadow-inner z-0 cursor-pointer hover:bg-white dark:hover:bg-dark-border transition-colors flex flex-col items-center justify-center p-0 m-0 outline-none"
                 style={{
                     top: '3.5rem',
                     left: '1.25rem',

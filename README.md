@@ -12,6 +12,8 @@
 - **Real-Time Security Auditing**: Automatically generates threat models and architecture documentation, validating rules like encryptions (SSE-KMS) and permissive Security Groups.
 - **B2B SaaS Ready**: Beautiful, high-performance dark-mode interface built with modern web aesthetics, dynamic scroll animations, and interactive elements.
 - **Architecture Templates**: Built-in interactive playgrounds for standard three-tier web apps, serverless REST APIs, and event-driven microservices.
+- **Codebase Tours**: Point Genesis at any public GitHub repo and it analyzes the codebase with Gemini to generate a guided tour — an interactive radial mind map of the architecture (project overview, tech stack, component relationships, key user flows), plus narrated per-file stops with AI-generated voice narration and key takeaways.
+- **Design Docs**: Create and review architecture decision docs, link them to approved designs, and let Genesis continuously scan incoming commits for drift against the documented decision.
 
 ## 🧠 How It Works
 
@@ -61,7 +63,10 @@ This tag-based routing approach guarantees minimal overhead, making the interact
 - **3D / WebGL**: [OGL](https://github.com/oframe/ogl) for high-performance, lightweight WebGL backgrounds (Lightfall, LightPillar).
 - **Icons**: [Lucide React](https://lucide.dev/)
 - **State Management**: React Hooks (`useState`, `useEffect`, `useTransform`)
-- **Authentication**: Custom Auth integration hooks (`useAuth`).
+- **Authentication**: [Supabase Auth](https://supabase.com/auth) (email OTP sign-up, session-based `useAuth` hook).
+- **Database**: PostgreSQL via [Supabase](https://supabase.com/) + [Prisma ORM](https://www.prisma.io/).
+- **AI**: [Google Gemini](https://ai.google.dev/) for codebase analysis, tour narration, and design-doc drift detection.
+- **Notifications**: [Sonner](https://sonner.emilkowal.ski/) toasts.
 
 ## 💻 Getting Started
 
@@ -90,43 +95,54 @@ This tag-based routing approach guarantees minimal overhead, making the interact
 
    | Variable | Required | Description |
    |----------|----------|-------------|
-   | `NEXT_PUBLIC_BACKEND_WS_URL` | Yes | Backend WebSocket URL. Local: `ws://localhost:8000`. Deployed: `wss://52-203-146-90.sslip.io` |
-   | `NEXT_PUBLIC_AWS_REGION` | Yes | e.g. `us-east-1` |
-   | `NEXT_PUBLIC_COGNITO_USER_POOL_ID` | Yes | Cognito user pool for auth |
-   | `NEXT_PUBLIC_COGNITO_CLIENT_ID` | Yes | Cognito app client id |
-   | `AWS_REGION` | Server-side | Region for DynamoDB (server routes) |
-   | `AWS_ACCESS_KEY_ID` | Server-side* | AWS key for DynamoDB access |
-   | `AWS_SECRET_ACCESS_KEY` | Server-side* | AWS secret for DynamoDB access |
+   | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anon/public key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Yes | Server-side only — never exposed to the browser |
+   | `NEXT_PUBLIC_SITE_URL` | Yes | Used for auth redirect URLs, e.g. `http://localhost:3000` |
+   | `NEXT_PUBLIC_BACKEND_WS_URL` | Yes | Backend WebSocket URL. Local: `ws://localhost:8000` |
+   | `DATABASE_URL` | Yes | Supabase Postgres, transaction-mode pooler (port 6543), used by Prisma at runtime |
+   | `DIRECT_URL` | Yes | Supabase Postgres, session-mode pooler (port 5432), used for `prisma db push` |
+   | `GEMINI_API_KEY` | Yes | Google Gemini key — powers codebase analysis, tour narration, drift detection |
+   | `GITHUB_TOKEN` | Optional | Raises GitHub API rate limits for repo analysis |
 
-   \* On AWS Amplify/Lambda the server routes use the attached IAM compute role
-   automatically, so the `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` pair is only
-   needed for local dev or non-AWS hosts (e.g. Vercel).
+   In the Supabase dashboard, also enable **Auth → Email → Email OTP** so sign-up
+   verification works with 6-digit codes.
 
-4. Run the development server:
+4. Push the Prisma schema to your database:
+   ```bash
+   npx prisma db push
+   npx prisma generate
+   ```
+
+5. Run the development server:
    ```bash
    npm run dev
    ```
 
-5. Open [http://localhost:3000](http://localhost:3000) with your browser.
+6. Open [http://localhost:3000](http://localhost:3000) with your browser.
 
 > **Backend required:** Genesis talks to the FlowState backend for the live AI,
 > diagram generation, review, cost and artifact features. Run it locally
 > (see [FlowState-Backend](https://github.com/Vishal-V-D/FlowState-Backend)) or
-> point `NEXT_PUBLIC_BACKEND_WS_URL` at the deployed backend
-> `wss://52-203-146-90.sslip.io`.
+> point `NEXT_PUBLIC_BACKEND_WS_URL` at the deployed backend.
 
 ### Deployment
 
-The frontend is deployed on **AWS Amplify** (Next.js SSR). Pushing to `main`
-auto-triggers a build. Environment variables are configured in the Amplify app
-settings, and an IAM compute role grants the SSR routes DynamoDB access.
+The frontend deploys to any Next.js-compatible host (Vercel, etc). Set the
+environment variables above in your hosting provider's dashboard, and point
+`DATABASE_URL`/`DIRECT_URL` at your Supabase project's connection strings.
 
 ## 🏗️ Project Structure
 
 - \`src/app\`: Next.js App Router pages and layouts.
+- \`src/app/codebase-tours\`: Guided codebase tours — repo analysis, radial architecture mind map, AI narration.
+- \`src/app/design-docs\`: Architecture decision docs with AI-powered drift scanning against commits.
+- \`src/app/api\`: Route handlers for tours, design docs, repos, workspaces, and user profile.
 - \`src/components/landing\`: Modular UI components for the landing page (e.g., \`PricingSection\`, \`SandboxSection\`, \`IDEPreviewSection\`).
 - \`src/components/ui\`: Reusable UI elements and complex WebGL components like \`Lightfall\` and \`LightPillar\`.
 - \`src/hooks\`: Custom React hooks for authentication and state management.
+- \`src/lib\`: Supabase client/server helpers, Prisma client, auth verification.
+- \`prisma/schema.prisma\`: Database schema (users, workspaces, design docs, codebase tours, tour stops/progress).
 
 ## 📄 License
 

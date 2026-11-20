@@ -1,136 +1,79 @@
 import { NextRequest, NextResponse } from "next/server";
 import { verifyToken } from "@/lib/auth-server";
-import { ddbDocClient } from "@/lib/aws-server";
-import { QueryCommand, PutCommand, BatchGetCommand } from "@aws-sdk/lib-dynamodb";
-
-const WORKSPACES_TABLE = "FlowstateWorkspaces";
-const COLLABS_TABLE = "FlowstateUserWorkspaces";
+import { prisma } from "@/lib/db";
 
 export async function GET(req: NextRequest) {
     const authUser = await verifyToken(req);
-    if (!authUser) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
-        // 1. Fetch workspaces owned by the user (using GSI UserWorkspacesIndex)
-        const ownerCommand = new QueryCommand({
-            TableName: WORKSPACES_TABLE,
-            IndexName: "UserWorkspacesIndex",
-            KeyConditionExpression: "userId = :uid",
-            ExpressionAttributeValues: {
-                ":uid": authUser.uid,
-            },
+        const owned = await prisma.workspace.findMany({
+            where: { userId: authUser.uid },
         });
 
-        const ownerRes = await ddbDocClient.send(ownerCommand);
-        const ownedWorkspaces = ownerRes.Items || [];
-
-        // 2. Fetch workspaces where user is a collaborator
-        const collabCommand = new QueryCommand({
-            TableName: COLLABS_TABLE,
-            KeyConditionExpression: "userId = :uid",
-            ExpressionAttributeValues: {
-                ":uid": authUser.uid,
-            },
+        const memberships = await prisma.workspaceMember.findMany({
+            where: { userId: authUser.uid },
+            select: { workspaceId: true },
         });
 
-        const collabRes = await ddbDocClient.send(collabCommand);
-        const collabItems = collabRes.Items || [];
+        const ownedIds = new Set(owned.map((w) => w.workspaceId));
+        const joinedIds = memberships
+            .map((m) => m.workspaceId)
+            .filter((id) => !ownedIds.has(id));
 
-        // Exclude those the user already owns to avoid duplicates
-        const joinedWorkspaceIds = collabItems
-            .map((item) => item.workspaceId)
-            .filter((id) => !ownedWorkspaces.some((w) => w.workspaceId === id));
+        const joined =
+            joinedIds.length > 0
+                ? await prisma.workspace.findMany({ where: { workspaceId: { in: joinedIds } } })
+                : [];
 
-        let joinedWorkspaces: any[] = [];
+        const all = [...owned, ...joined].sort(
+            (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+        );
 
-        // 3. Batch fetch details for joined workspaces if any exist
-        if (joinedWorkspaceIds.length > 0) {
-            // DynamoDB BatchGet limits to 100 items per call, which is plenty for list page pagination
-            const keys = joinedWorkspaceIds.slice(0, 100).map((id) => ({ workspaceId: id }));
-            const batchCommand = new BatchGetCommand({
-                RequestItems: {
-                    [WORKSPACES_TABLE]: {
-                        Keys: keys,
-                    },
-                },
-            });
-
-            const batchRes = await ddbDocClient.send(batchCommand);
-            joinedWorkspaces = batchRes.Responses?.[WORKSPACES_TABLE] || [];
-        }
-
-        // Combine all workspaces
-        const allWorkspaces = [...ownedWorkspaces, ...joinedWorkspaces];
-
-        // Sort by updatedAt descending
-        allWorkspaces.sort((a, b) => {
-            const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-            const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-            return timeB - timeA;
-        });
-
-        return NextResponse.json(allWorkspaces);
+        return NextResponse.json(all);
     } catch (error: any) {
         console.error("Error listing workspaces:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }
 
 export async function POST(req: NextRequest) {
     const authUser = await verifyToken(req);
-    if (!authUser) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    if (!authUser) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     try {
         const body = await req.json();
         const { workspaceId, title, subtitle } = body;
+        if (!workspaceId) return NextResponse.json({ error: "Missing workspaceId" }, { status: 400 });
 
-        if (!workspaceId) {
-            return NextResponse.json({ error: "Missing workspaceId" }, { status: 400 });
-        }
-
-        const now = new Date().toISOString();
-        const workspaceItem = {
-            workspaceId,
-            userId: authUser.uid,
-            title: title || "Untitled Architecture",
-            subtitle: subtitle || "Personal Workspace",
-            elements: "[]",
-            appState: "{}",
-            shareMode: "public",
-            editTokens: [],
-            viewTokens: [],
-            chats: [],
-            createdAt: now,
-            updatedAt: now,
-        };
-
-        // 1. Create the workspace in FlowstateWorkspaces
-        const putWorkspace = new PutCommand({
-            TableName: WORKSPACES_TABLE,
-            Item: workspaceItem,
+        // Ensure user record exists before creating workspace (FK constraint)
+        await prisma.user.upsert({
+            where: { userId: authUser.uid },
+            update: {},
+            create: { userId: authUser.uid, email: authUser.email },
         });
-        await ddbDocClient.send(putWorkspace);
 
-        // 2. Also register the owner role in FlowstateUserWorkspaces join index
-        const putCollab = new PutCommand({
-            TableName: COLLABS_TABLE,
-            Item: {
+        const workspace = await prisma.workspace.create({
+            data: {
+                workspaceId,
+                userId: authUser.uid,
+                title: title || "Untitled Architecture",
+                subtitle: subtitle || "Personal Workspace",
+            },
+        });
+
+        await prisma.workspaceMember.create({
+            data: {
                 userId: authUser.uid,
                 workspaceId,
                 role: "owner",
-                title: title || "Untitled Architecture",
-                updatedAt: now,
+                title: workspace.title,
             },
         });
-        await ddbDocClient.send(putCollab);
 
-        return NextResponse.json(workspaceItem);
+        return NextResponse.json(workspace);
     } catch (error: any) {
         console.error("Error creating workspace:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: "Internal server error" }, { status: 500 });
     }
 }

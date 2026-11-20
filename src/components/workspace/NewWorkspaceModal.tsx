@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, User, Sparkles, Mic, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentSession } from "@/lib/aws-client";
+import { getCurrentSession } from "@/lib/supabase-client";
 
 interface Props {
     onClose: () => void;
@@ -81,36 +81,36 @@ export default function NewWorkspaceModal({ onClose }: Props) {
         >
             {/* Panel */}
             <div
-                className="relative w-full max-w-lg mx-4 bg-white rounded-3xl shadow-2xl p-8 border border-gray-100"
+                className="relative w-full max-w-lg mx-4 bg-white dark:bg-dark-card rounded-3xl shadow-2xl p-8 border border-gray-100 dark:border-dark-border"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Close */}
                 <button
                     onClick={onClose}
-                    className="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                    className="absolute top-5 right-5 w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-dark-border hover:bg-gray-200 dark:hover:bg-dark-border/80 transition-colors"
                 >
-                    <X className="w-4 h-4 text-gray-500" />
+                    <X className="w-4 h-4 text-gray-500 dark:text-dark-muted" />
                 </button>
 
                 {/* Header */}
                 <div className="mb-6">
-                    <h2 className="text-2xl font-semibold text-gray-900 mb-1">
+                    <h2 className="text-2xl font-semibold text-gray-900 dark:text-dark-text mb-1">
                         New Workspace
                     </h2>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-dark-muted">
                         Choose how you want to work on this architecture.
                     </p>
                 </div>
 
                 {/* Title Input */}
                 <div className="mb-8">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Workspace Title</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-dark-muted mb-2">Workspace Title</label>
                     <input
                         type="text"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         placeholder="e.g. Payment Gateway Architecture"
-                        className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#536ea1]/30 focus:border-[#536ea1] transition-all"
+                        className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-dark-border dark:bg-dark-border dark:text-dark-text dark:placeholder-dark-subtle focus:outline-none focus:ring-2 focus:ring-[#536ea1]/30 focus:border-[#536ea1] transition-all"
                         disabled={loading}
                     />
                 </div>
@@ -121,15 +121,15 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                     <button
                         onClick={openPersonal}
                         disabled={loading}
-                        className="group flex flex-col items-start p-6 rounded-2xl border-2 border-gray-200 hover:border-gray-400 bg-white hover:bg-gray-50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="group flex flex-col items-start p-6 rounded-2xl border-2 border-gray-200 dark:border-dark-border hover:border-gray-400 dark:hover:border-dark-subtle bg-white dark:bg-dark-bg hover:bg-gray-50 dark:hover:bg-dark-border/50 transition-all text-left disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                        <div className="w-11 h-11 rounded-2xl bg-gray-100 group-hover:bg-gray-200 flex items-center justify-center mb-4 transition-colors">
-                            <User className="w-5 h-5 text-gray-600" />
+                        <div className="w-11 h-11 rounded-2xl bg-gray-100 dark:bg-dark-border group-hover:bg-gray-200 dark:group-hover:bg-dark-border/80 flex items-center justify-center mb-4 transition-colors">
+                            <User className="w-5 h-5 text-gray-600 dark:text-dark-muted" />
                         </div>
-                        <h3 className="font-semibold text-gray-900 text-base mb-1">
+                        <h3 className="font-semibold text-gray-900 dark:text-dark-text text-base mb-1">
                             Personal
                         </h3>
-                        <p className="text-xs text-gray-500 leading-relaxed">
+                        <p className="text-xs text-gray-500 dark:text-dark-muted leading-relaxed">
                             Blank canvas. Draw your architecture freely without AI.
                         </p>
                     </button>
@@ -149,22 +149,22 @@ export default function NewWorkspaceModal({ onClose }: Props) {
                                 <Sparkles className="w-5 h-5 text-white" />
                             )}
                         </div>
-                        <h3 className="font-semibold text-[#3a5080] text-base mb-1">
+                        <h3 className="font-semibold text-[#3a5080] dark:text-[#8aafd4] text-base mb-1">
                             With AI Assistance
                         </h3>
-                        <p className="text-xs text-[#536ea1] leading-relaxed mb-3">
+                        <p className="text-xs text-[#536ea1] dark:text-[#8aafd4]/80 leading-relaxed mb-3">
                             FlowState AI joins as your architect. Speak naturally, it draws.
                         </p>
 
                         <div className="flex items-center gap-2 mt-auto">
-                            <span className="flex items-center gap-1 text-[10px] font-medium text-[#536ea1]/70">
+                            <span className="flex items-center gap-1 text-[10px] font-medium text-[#536ea1]/70 dark:text-[#8aafd4]/60">
                                 <Mic className="w-3 h-3" /> Microphone only
                             </span>
                         </div>
                     </button>
                 </div>
 
-                <p className="mt-6 text-xs text-gray-400 text-center">
+                <p className="mt-6 text-xs text-gray-400 dark:text-dark-subtle text-center">
                     AI Assistance only needs your microphone — no screen sharing required.
                 </p>
             </div>

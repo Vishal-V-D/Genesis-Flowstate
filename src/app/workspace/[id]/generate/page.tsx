@@ -141,7 +141,7 @@ function FileTree({ nodes, selectedPath, onSelect, files }: {
       <div key={node.path}>
         <button
           onClick={() => isFolder ? toggle(node.path) : onSelect(node.path)}
-          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left text-[12.5px] transition-colors ${isSelected ? "bg-indigo-50 text-indigo-700 font-medium" : "text-slate-600 hover:bg-slate-100"}`}
+          className={`w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-left text-[12.5px] transition-colors ${isSelected ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "text-slate-600 dark:text-dark-muted hover:bg-slate-100 dark:hover:bg-dark-border"}`}
           style={{ paddingLeft: `${8 + depth * 12}px` }}
         >
           {isFolder ? (
@@ -176,7 +176,7 @@ function LogConsole({ logs }: { logs: LogEntry[] }) {
   useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [logs]);
 
   const colors: Record<LogEntry["type"], string> = {
-    info: "text-slate-600", success: "text-emerald-600",
+    info: "text-slate-600 dark:text-dark-muted", success: "text-emerald-600",
     error: "text-red-500", processing: "text-indigo-500",
   };
 
@@ -436,24 +436,24 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
   };
 
   if (loading) return (
-    <div className="h-screen w-screen flex items-center justify-center bg-[#f0f4f9]">
+    <div className="h-screen w-screen flex items-center justify-center bg-[#f0f4f9] dark:bg-dark-bg">
       <Loader2 className="animate-spin text-indigo-500" size={32} />
     </div>
   );
 
   return (
-    <div className="flex flex-col h-screen bg-[#f0f4f9] overflow-hidden font-sans text-slate-800">
+    <div className="flex flex-col h-screen bg-[#f0f4f9] dark:bg-dark-bg overflow-hidden font-sans text-slate-800 dark:text-dark-text">
 
       {/* Header */}
       <header className="h-16 flex items-center justify-between px-6 shrink-0 z-30">
         <div className="flex items-center gap-4">
           <button onClick={() => router.push(`/workspace/${params.id}`)}
-            className="flex items-center gap-1.5 text-black hover:text-slate-800 transition-colors font-medium text-[13px]">
+            className="flex items-center gap-1.5 text-black dark:text-dark-text hover:text-slate-800 dark:hover:text-dark-muted transition-colors font-medium text-[13px]">
             <ArrowLeft size={16} /> Back
           </button>
           <div className="h-4 w-[1px] bg-slate-300" />
           {data?.thumbnail && <img src={data.thumbnail} alt="" className="h-7 rounded border border-slate-200 object-contain bg-white" />}
-          <span className="text-[14px] font-semibold text-slate-700">{data?.workspaceTitle || "Generation Hub"}</span>
+          <span className="text-[14px] font-semibold text-slate-700 dark:text-dark-text">{data?.workspaceTitle || "Generation Hub"}</span>
           
           {isGenerating && (
             <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-600 text-[11px] font-medium ml-2 shadow-sm">
@@ -504,11 +504,11 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
 
         {/* Left Panel: Sources (Config) */}
         {isLeftPanelOpen ? (
-          <div className="w-[380px] bg-white rounded-3xl flex flex-col shrink-0 overflow-hidden shadow-sm border-4 border-slate-200/60 transition-all duration-300">
+          <div className="w-[380px] bg-white dark:bg-dark-card rounded-xl flex flex-col shrink-0 overflow-hidden shadow-sm border-4 border-slate-200/60 dark:border-dark-border/60 transition-all duration-300">
             
-            <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-              <span className="text-[14px] font-bold text-slate-900">Sources</span>
-              <button onClick={() => setIsLeftPanelOpen(false)} className="text-slate-500 hover:text-slate-900 transition-colors bg-slate-100 hover:bg-slate-200 p-1.5 rounded-lg">
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-dark-border flex items-center justify-between bg-white dark:bg-dark-card shrink-0">
+              <span className="text-[14px] font-bold text-slate-900 dark:text-dark-text">Sources</span>
+              <button onClick={() => setIsLeftPanelOpen(false)} className="text-slate-500 dark:text-dark-muted hover:text-slate-900 dark:hover:text-dark-text transition-colors bg-slate-100 dark:bg-dark-border hover:bg-slate-200 dark:hover:bg-dark-border p-1.5 rounded-lg">
                 <PanelLeftClose size={16} />
               </button>
             </div>
@@ -516,11 +516,11 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
             <div className="p-6 space-y-6 flex-1 overflow-y-auto">
                 {/* Mode */}
                 <div>
-                  <label className="block text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-3">Output Mode</label>
-                  <div className="flex gap-2 p-1 bg-slate-100 rounded-xl border border-slate-200">
+                  <label className="block text-[12px] font-bold text-slate-800 dark:text-dark-muted uppercase tracking-wider mb-3">Output Mode</label>
+                  <div className="flex gap-2 p-1 bg-slate-100 dark:bg-dark-border rounded-xl border border-slate-200 dark:border-dark-border">
                     {(["code", "docs"] as const).map(m => (
                       <button key={m} onClick={() => handleModeChange(m)}
-                        className={`flex-1 py-2 rounded-lg text-[13px] font-semibold capitalize transition-all ${outputMode === m ? "bg-white text-slate-900 shadow-sm border border-slate-300" : "text-slate-600 hover:text-slate-900"}`}>
+                        className={`flex-1 py-2 rounded-lg text-[13px] font-semibold capitalize transition-all ${outputMode === m ? "bg-white dark:bg-dark-card text-slate-900 dark:text-dark-text shadow-sm border border-slate-300 dark:border-dark-border" : "text-slate-600 dark:text-dark-muted hover:text-slate-900 dark:hover:text-dark-text"}`}>
                         {m === "code" ? "Code" : "Docs"}
                       </button>
                     ))}
@@ -529,11 +529,11 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
 
                 {/* Category */}
                 <div>
-                  <label className="block text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-3">Category</label>
+                  <label className="block text-[12px] font-bold text-slate-800 dark:text-dark-muted uppercase tracking-wider mb-3">Category</label>
                   <div className="grid grid-cols-2 gap-2.5">
                     {currentCategories.map(c => (
                       <button key={c} onClick={() => { setCategory(c); setTarget(currentTargets[c][0]); }}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-all border ${category === c ? "bg-indigo-100 border-indigo-300 text-indigo-900" : "bg-white border-slate-300 text-slate-700 hover:bg-slate-50"}`}>
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-[12px] font-semibold transition-all border ${category === c ? "bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-900 dark:text-indigo-300" : "bg-white dark:bg-dark-border border-slate-300 dark:border-dark-border text-slate-700 dark:text-dark-muted hover:bg-slate-50 dark:hover:bg-dark-border"}`}>
                         {getCategoryIcon(c)} {c}
                       </button>
                     ))}
@@ -542,15 +542,15 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
 
                 {/* Target */}
                 <div>
-                  <label className="block text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-3">Target Framework</label>
+                  <label className="block text-[12px] font-bold text-slate-800 dark:text-dark-muted uppercase tracking-wider mb-3">Target Framework</label>
                   <select value={target} onChange={e => setTarget(e.target.value)}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3 py-3 text-[13px] font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all cursor-pointer shadow-sm">
+                    className="w-full bg-white dark:bg-dark-border border border-slate-300 dark:border-dark-border rounded-xl px-3 py-3 text-[13px] font-semibold text-slate-900 dark:text-dark-text focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 transition-all cursor-pointer shadow-sm">
                     {(currentTargets[category] || []).map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
             </div>
 
-            <div className="p-5 shrink-0 border-t border-slate-200 bg-white">
+            <div className="p-5 shrink-0 border-t border-slate-200 dark:border-dark-border bg-white dark:bg-dark-card">
                 <button onClick={handleGenerate} disabled={isGenerating}
                   className="w-full flex items-center justify-center gap-2 py-3.5 rounded-full text-white font-bold text-[14px] transition-all bg-slate-900 hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-slate-900/20">
                   {isGenerating ? <><Loader2 size={16} className="animate-spin" /> Generating...</> : <><Zap size={16} className="fill-current" /> Generate Artifact</>}
@@ -558,7 +558,7 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
             </div>
           </div>
         ) : (
-          <div className="w-[68px] bg-white rounded-[24px] flex flex-col items-center py-5 shrink-0 shadow-sm border border-slate-200/60 transition-all duration-300">
+          <div className="w-[68px] bg-white dark:bg-dark-card rounded-[24px] flex flex-col items-center py-5 shrink-0 shadow-sm border border-slate-200/60 dark:border-dark-border/60 transition-all duration-300">
              <button onClick={() => setIsLeftPanelOpen(true)} className="p-2 text-slate-600 hover:text-black transition-all" title="Open Sources">
                 <PanelLeftOpen size={20} />
              </button>
@@ -566,24 +566,24 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
              
              {/* Decorative icons to match NotebookLM collapsed bar aesthetic */}
              <div className="flex flex-col gap-3 w-full items-center">
-                <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-500"><Layers size={20} /></div>
-                <div className="w-11 h-11 rounded-2xl bg-emerald-50 flex items-center justify-center text-emerald-500"><Database size={20} /></div>
-                <div className="w-11 h-11 rounded-2xl bg-amber-50 flex items-center justify-center text-amber-500"><Cpu size={20} /></div>
+                <div className="w-11 h-11 rounded-xl bg-indigo-50 flex items-center justify-center text-indigo-500"><Layers size={20} /></div>
+                <div className="w-11 h-11 rounded-xl bg-emerald-50 flex items-center justify-center text-emerald-500"><Database size={20} /></div>
+                <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center text-amber-500"><Cpu size={20} /></div>
              </div>
           </div>
         )}
 
         {/* Right Panel: Chat/Content Area (File Explorer + Code Viewer + Logs) */}
-        <div className="flex-1 bg-white rounded-3xl flex flex-col overflow-hidden shadow-sm border-4 border-slate-200/60 relative">
+        <div className="flex-1 bg-white dark:bg-dark-card rounded-xl flex flex-col overflow-hidden shadow-sm border-4 border-slate-200/60 dark:border-dark-border/60 relative">
           
           <div className="flex-1 flex overflow-hidden">
             
             {/* File Explorer side (Only visible if generated files exist) */}
             {(files.length > 0 || isGenerating) && isFileExplorerOpen && (
-              <div className="w-[260px] border-r border-slate-100 flex flex-col bg-slate-50/30 shrink-0 transition-all duration-300">
-                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
+              <div className="w-[260px] border-r border-slate-100 dark:border-dark-border flex flex-col bg-slate-50/30 dark:bg-dark-card shrink-0 transition-all duration-300">
+                <div className="px-5 py-4 border-b border-slate-100 dark:border-dark-border flex items-center justify-between bg-white dark:bg-dark-card shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[12px] font-semibold text-slate-600 uppercase tracking-wider">Explorer</span>
+                    <span className="text-[12px] font-semibold text-slate-600 dark:text-dark-muted uppercase tracking-wider">Explorer</span>
                     {files.length > 0 && <span className="text-[11px] font-medium bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">{files.length}</span>}
                   </div>
                   <button onClick={() => setIsFileExplorerOpen(false)} className="text-slate-400 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 p-1.5 rounded-lg transition-colors" title="Collapse Explorer">
@@ -615,10 +615,10 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
             )}
 
             {/* Code Viewer Side */}
-            <div className="flex-1 flex flex-col overflow-hidden relative bg-white">
+            <div className="flex-1 flex flex-col overflow-hidden relative bg-white dark:bg-dark-card">
               {/* Tab bar */}
               {selectedFile ? (
-                <div className="flex items-center justify-between bg-white border-b border-slate-100 h-14 shrink-0 px-4">
+                <div className="flex items-center justify-between bg-white dark:bg-dark-card border-b border-slate-100 dark:border-dark-border h-14 shrink-0 px-4">
                   <div className="flex items-center gap-2 px-4 py-2 bg-indigo-50 border border-indigo-100 rounded-xl text-[13px] text-indigo-800 shadow-sm font-medium">
                     <File size={14} className="text-indigo-500" />
                     <span>{selectedFile.path.split("/").pop()}</span>
@@ -638,8 +638,8 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
                   )}
                 </div>
               ) : (
-                <div className="h-14 border-b border-slate-100 bg-white shrink-0 flex items-center px-6">
-                  <span className="text-[13px] font-medium text-black">Content Viewer</span>
+                <div className="h-14 border-b border-slate-100 dark:border-dark-border bg-white dark:bg-dark-card shrink-0 flex items-center px-6">
+                  <span className="text-[13px] font-medium text-black dark:text-dark-text">Content Viewer</span>
                 </div>
               )}
 
@@ -647,7 +647,7 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
               <div className="flex-1 overflow-hidden relative">
                 {!selectedFile && !isGenerating && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center text-black gap-4 bg-slate-50/50">
-                    <div className="w-16 h-16 rounded-2xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+                    <div className="w-16 h-16 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
                       <Layers size={28} className="text-black" />
                     </div>
                     <p className="text-[14px] font-medium">Select your configuration on the left and generate</p>
@@ -731,10 +731,10 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
           </div>
 
           {/* Log Console (Bottom of right panel) */}
-          <div className="h-44 bg-slate-50 border-t border-slate-100 flex flex-col shrink-0">
-            <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100 bg-white">
+          <div className="h-44 bg-slate-50 dark:bg-dark-bg border-t border-slate-100 dark:border-dark-border flex flex-col shrink-0">
+            <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100 dark:border-dark-border bg-white dark:bg-dark-card">
               <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse shadow-[0_0_8px_rgba(99,102,241,0.5)]" />
-              <span className="text-[11px] font-bold text-black uppercase tracking-widest">Generation Logs</span>
+              <span className="text-[11px] font-bold text-black dark:text-dark-text uppercase tracking-widest">Generation Logs</span>
             </div>
             <div className="flex-1 overflow-hidden p-2">
               <LogConsole logs={logs} />
@@ -747,28 +747,28 @@ export default function GeneratePage({ params }: { params: { id: string } }) {
       {/* Settings Modal */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[24px] w-[420px] shadow-2xl border border-slate-200 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
-              <span className="text-[15px] font-bold text-slate-900 flex items-center gap-2"><Settings size={18} className="text-slate-500" /> Advanced Settings</span>
-              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-900 hover:bg-slate-100 p-2 rounded-full transition-all">
+          <div className="bg-white dark:bg-dark-card rounded-[24px] w-[420px] shadow-2xl border border-slate-200 dark:border-dark-border overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-5 border-b border-slate-100 dark:border-dark-border flex items-center justify-between bg-white dark:bg-dark-card shrink-0">
+              <span className="text-[15px] font-bold text-slate-900 dark:text-dark-text flex items-center gap-2"><Settings size={18} className="text-slate-500 dark:text-dark-muted" /> Advanced Settings</span>
+              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 dark:text-dark-muted hover:text-slate-900 dark:hover:text-dark-text hover:bg-slate-100 dark:hover:bg-dark-border p-2 rounded-full transition-all">
                 <X size={16} />
               </button>
             </div>
             <div className="p-6 space-y-6">
                <div>
-                  <label className="block text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-2.5">AI Engine</label>
-                  <select value={advancedConfig.model} onChange={e => setAdvancedConfig({...advancedConfig, model: e.target.value})} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[13px] font-semibold text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer">
+                  <label className="block text-[12px] font-bold text-slate-800 dark:text-dark-muted uppercase tracking-wider mb-2.5">AI Engine</label>
+                  <select value={advancedConfig.model} onChange={e => setAdvancedConfig({...advancedConfig, model: e.target.value})} className="w-full bg-slate-50 dark:bg-dark-border border border-slate-200 dark:border-dark-border rounded-xl px-4 py-3 text-[13px] font-semibold text-slate-900 dark:text-dark-text focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all cursor-pointer">
                      <option value="gemini-2.5-flash">Gemini 2.5 Flash (Fast)</option>
                      <option value="gemini-2.5-pro">Gemini 2.5 Pro (Powerful)</option>
                      <option value="claude-3-5-sonnet">Claude 3.5 Sonnet</option>
                   </select>
                </div>
                <div>
-                  <label className="block text-[12px] font-bold text-slate-800 uppercase tracking-wider mb-2.5">Custom System Instructions</label>
-                  <textarea value={advancedConfig.customInstructions} onChange={e => setAdvancedConfig({...advancedConfig, customInstructions: e.target.value})} placeholder="E.g., Always use TypeScript, prefer functional components..." className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-[13px] text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all h-20 resize-none"></textarea>
+                  <label className="block text-[12px] font-bold text-slate-800 dark:text-dark-muted uppercase tracking-wider mb-2.5">Custom System Instructions</label>
+                  <textarea value={advancedConfig.customInstructions} onChange={e => setAdvancedConfig({...advancedConfig, customInstructions: e.target.value})} placeholder="E.g., Always use TypeScript, prefer functional components..." className="w-full bg-slate-50 dark:bg-dark-border border border-slate-200 dark:border-dark-border rounded-xl px-4 py-3 text-[13px] text-slate-900 dark:text-dark-text focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all h-20 resize-none"></textarea>
                </div>
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end">
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-dark-border bg-slate-50/50 dark:bg-dark-card flex justify-end">
                <button onClick={() => setIsSettingsOpen(false)} className="px-6 py-2.5 bg-slate-900 text-white font-bold text-[13px] rounded-full hover:bg-black transition-all shadow-md shadow-slate-900/10">Save Configuration</button>
             </div>
           </div>

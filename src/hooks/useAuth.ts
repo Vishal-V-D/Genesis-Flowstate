@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getCurrentSession, signOutUser, CognitoUserSession } from "@/lib/aws-client";
+import { getCurrentSession, signOutUser } from "@/lib/supabase-client";
 
 export interface UserProfile {
     uid: string;

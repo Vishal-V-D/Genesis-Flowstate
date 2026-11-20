@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import NextTopLoader from 'nextjs-toploader';
+import { Toaster } from "sonner";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 export const metadata: Metadata = {
     title: "Genesis FlowState | Build the new way",
@@ -36,7 +38,15 @@ export default function RootLayout({
                 />
                 <div className="bg-mesh"></div>
 
-                {children}
+                <ThemeProvider>
+                    {children}
+                    <Toaster
+                        position="top-right"
+                        richColors
+                        closeButton
+                        toastOptions={{ duration: 4000 }}
+                    />
+                </ThemeProvider>
             </body>
         </html>
     );

@@ -15,7 +15,7 @@ export default function AuthBackground({ mode = "signin" }: { mode?: "signin" | 
     return (
         <div className="absolute inset-0 overflow-hidden pointer-events-none -z-0">
             {/* Light base for the non-purple half */}
-            <div className="absolute inset-0 bg-gradient-to-br from-white via-[#faf9ff] to-[#f1ecff]" />
+            <div className="absolute inset-0 bg-gradient-to-br from-white via-[#faf9ff] to-[#f1ecff] dark:from-dark-bg dark:via-dark-bg dark:to-dark-bg" />
 
             {/* Solid purple diagonal half — left wedge for sign-in, right for sign-up */}
             <div

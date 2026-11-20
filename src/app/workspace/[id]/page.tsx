@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LibraryItems } from "@excalidraw/excalidraw/types";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentSession } from "@/lib/aws-client";
+import { getCurrentSession } from "@/lib/supabase-client";
 import WorkspaceLoading from '../loading';
 
 const LIBRARY_STORAGE_KEY = "kira-excalidraw-library";
@@ -23,10 +23,10 @@ const globalWorkspaceCache: Record<string, {
 const ExcalidrawWrapper = dynamic(() => import("./ExcalidrawWrapper"), {
     ssr: false,
     loading: () => (
-        <div className="flex items-center justify-center w-full h-full bg-[#f8f9fa]">
+        <div className="flex items-center justify-center w-full h-full bg-[#f8f9fa] dark:bg-dark-bg">
             <div className="flex flex-col items-center gap-3">
-                <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin" />
-                <span className="text-sm text-gray-400 font-medium">Loading canvas...</span>
+                <div className="w-8 h-8 border-4 border-gray-200 dark:border-dark-border border-t-blue-500 rounded-full animate-spin" />
+                <span className="text-sm text-gray-400 dark:text-dark-subtle font-medium">Loading canvas...</span>
             </div>
         </div>
     ),

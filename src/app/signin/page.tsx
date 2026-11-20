@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Eye, EyeOff } from "lucide-react";
-import { signInUser } from "@/lib/aws-client";
+import { signInUser } from "@/lib/supabase-client";
 import AuthBackground from "@/components/auth/AuthBackground";
 
 export default function SignIn() {
@@ -34,20 +34,17 @@ export default function SignIn() {
         try {
             await signInUser(email, password);
             setIsLoading(false);
-            router.push("/library");
+            router.push("/home");
         } catch (err: any) {
             console.error("Sign in error:", err);
             // Translate Cognito errors
             let msg = "Invalid email or password. Please try again.";
-            if (err.name === "UserNotConfirmedException") {
+            if (err.message?.includes("Email not confirmed")) {
                 msg = "Please confirm your sign up by verifying your email first.";
-                // We could redirect to a confirmation screen here if needed:
                 router.push(`/signup?confirm=true&email=${encodeURIComponent(email)}`);
                 return;
-            } else if (err.name === "UserNotFoundException") {
-                msg = "User account does not exist. Please register first.";
-            } else if (err.name === "NotAuthorizedException") {
-                msg = "Incorrect username or password. Please try again.";
+            } else if (err.message?.includes("Invalid login credentials") || err.message?.includes("invalid_credentials")) {
+                msg = "Incorrect email or password. Please try again.";
             }
             setError(msg);
             setIsLoading(false);
@@ -57,18 +54,21 @@ export default function SignIn() {
     return (
         <div className="relative min-h-screen flex items-center justify-center p-4 selection:bg-google-blue/20 overflow-hidden">
             <AuthBackground mode="signin" />
-            <div className="relative z-10 w-full max-w-[450px] bg-white/95 backdrop-blur-xl rounded-[24px] shadow-[0_20px_70px_rgba(82,39,255,0.15)] p-10 border border-white/60 flex flex-col pt-12">
+            <div className="relative z-10 w-full max-w-[450px] bg-white dark:bg-dark-card backdrop-blur-xl rounded-xl p-10 border border-gray-100 dark:border-dark-border flex flex-col pt-12">
                 <div className="flex justify-center mb-6">
                     <div className="flex rounded-sm p-1 px-2">
-                        <span className="text-google-blue font-[300] text-xl">K</span>
+                        <span className="text-google-blue font-[300] text-xl">G</span>
+                        <span className="text-google-red font-[300] text-xl">e</span>
+                        <span className="text-google-yellow font-[300] text-xl">n</span>
+                        <span className="text-google-green font-[300] text-xl">e</span>
+                        <span className="text-google-blue font-[300] text-xl">s</span>
                         <span className="text-google-red font-[300] text-xl">i</span>
-                        <span className="text-google-yellow font-[300] text-xl">r</span>
-                        <span className="text-google-green font-[300] text-xl">a</span>
+                        <span className="text-google-yellow font-[300] text-xl">s</span>
                     </div>
                 </div>
 
-                <h1 className="text-3xl font-[400] text-[#1f1f1f] text-center mb-2 tracking-tight">Sign in</h1>
-                <p className="text-center text-[#444746] mb-8 text-[15px]">Use your FlowState Account</p>
+                <h1 className="text-3xl font-[400] text-[#1f1f1f] dark:text-dark-text text-center mb-2 tracking-tight">Sign in</h1>
+                <p className="text-center text-[#444746] dark:text-dark-muted mb-8 text-[15px]">Use your Genesis Account</p>
 
                 {error && (
                     <div className="bg-red-50 text-red-700 px-4 py-3 rounded-xl text-sm mb-6 border border-red-100 flex items-center gap-3">
@@ -82,11 +82,11 @@ export default function SignIn() {
                         <input
                             type="email"
                             placeholder="Email or phone"
-                            className="w-full px-4 py-4 bg-transparent border border-gray-300 rounded-[8px] text-[#1f1f1f] focus:outline-none focus:border-google-blue focus:border-2 transition-all peer placeholder-transparent"
+                            className="w-full px-4 py-4 bg-transparent border border-gray-300 dark:border-dark-border rounded-[8px] text-[#1f1f1f] dark:text-dark-text focus:outline-none focus:border-google-blue focus:border-2 transition-all peer placeholder-transparent dark:bg-transparent"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                         />
-                        <label className="absolute left-4 top-4 text-gray-500 text-[15px] pointer-events-none transition-all peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-google-blue peer-focus:bg-white peer-focus:px-1 peer-valid:-top-2.5 peer-valid:text-xs peer-valid:bg-white peer-valid:px-1 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:-top-2.5 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:text-xs [&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-white [&:not(:empty)]:peer-[:not(:placeholder-shown)]:px-1">
+                        <label className="absolute left-4 top-4 text-gray-500 text-[15px] pointer-events-none transition-all peer-focus:-top-2.5 peer-focus:text-xs peer-focus:text-google-blue peer-focus:bg-white dark:peer-focus:bg-dark-card peer-focus:px-1 peer-valid:-top-2.5 peer-valid:text-xs peer-valid:bg-white dark:peer-valid:bg-dark-card peer-valid:px-1 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:-top-2.5 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:text-xs [&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-white dark:[&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-dark-card [&:not(:empty)]:peer-[:not(:placeholder-shown)]:px-1">
                             Email address
                         </label>
                     </div>
@@ -95,20 +95,20 @@ export default function SignIn() {
                         <input
                             type={showPassword ? "text" : "password"}
                             placeholder="Enter your password"
-                            className="w-full px-4 py-4 bg-transparent border border-gray-300 rounded-[8px] text-[#1f1f1f] focus:outline-none focus:border-google-blue focus:border-2 transition-all peer placeholder-transparent pr-12"
+                            className="w-full px-4 py-4 bg-transparent border border-gray-300 dark:border-dark-border rounded-[8px] text-[#1f1f1f] dark:text-dark-text focus:outline-none focus:border-google-blue focus:border-2 transition-all peer placeholder-transparent pr-12"
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                         />
-                        <label className="absolute left-4 top-6 text-gray-500 text-[15px] pointer-events-none transition-all peer-focus:-top-0.5 peer-focus:text-xs peer-focus:text-google-blue peer-focus:bg-white peer-focus:px-1 peer-valid:-top-0.5 peer-valid:text-xs peer-valid:bg-white peer-valid:px-1 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:-top-0.5 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:text-xs [&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-white [&:not(:empty)]:peer-[:not(:placeholder-shown)]:px-1">
+                        <label className="absolute left-4 top-6 text-gray-500 text-[15px] pointer-events-none transition-all peer-focus:-top-0.5 peer-focus:text-xs peer-focus:text-google-blue peer-focus:bg-white dark:peer-focus:bg-dark-card peer-focus:px-1 peer-valid:-top-0.5 peer-valid:text-xs peer-valid:bg-white dark:peer-valid:bg-dark-card peer-valid:px-1 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:-top-0.5 [&:not(:empty)]:peer-[:not(:placeholder-shown)]:text-xs [&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-white dark:[&:not(:empty)]:peer-[:not(:placeholder-shown)]:bg-dark-card [&:not(:empty)]:peer-[:not(:placeholder-shown)]:px-1">
                             Enter your password
                         </label>
                         <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-6 text-gray-500 hover:text-gray-700 hover:bg-gray-100 p-1.5 rounded-full transition-colors flex items-center justify-center"
+                            className="absolute right-3 top-6 text-gray-500 dark:text-dark-muted hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-dark-border p-1.5 rounded-full transition-colors flex items-center justify-center"
                             tabIndex={-1}
                         >
-                            {showPassword ? <EyeOff size={20} className="text-gray-600" /> : <Eye size={20} className="text-gray-600" />}
+                            {showPassword ? <EyeOff size={20} className="text-gray-600 dark:text-dark-muted" /> : <Eye size={20} className="text-gray-600 dark:text-dark-muted" />}
                         </button>
                     </div>
 
@@ -139,14 +139,14 @@ export default function SignIn() {
             </div>
 
             {/* Minimal footer typical of Google logins */}
-            <div className="absolute bottom-4 left-0 w-full flex justify-between px-8 max-w-5xl mx-auto items-center text-[12px] text-gray-500">
+            <div className="absolute bottom-4 left-0 w-full flex justify-between px-8 max-w-5xl mx-auto items-center text-[12px] text-gray-500 dark:text-dark-subtle">
                 <div className="flex gap-4">
-                    <span className="cursor-pointer hover:bg-gray-200 px-2 py-1 rounded transition-colors">English (United States)</span>
+                    <span className="cursor-pointer hover:bg-gray-200 dark:hover:bg-dark-border px-2 py-1 rounded transition-colors">English (United States)</span>
                 </div>
                 <div className="flex gap-4">
-                    <span className="cursor-pointer hover:bg-gray-200 px-2 py-1 rounded transition-colors">Help</span>
-                    <span className="cursor-pointer hover:bg-gray-200 px-2 py-1 rounded transition-colors">Privacy</span>
-                    <span className="cursor-pointer hover:bg-gray-200 px-2 py-1 rounded transition-colors">Terms</span>
+                    <span className="cursor-pointer hover:bg-gray-200 dark:hover:bg-dark-border px-2 py-1 rounded transition-colors">Help</span>
+                    <span className="cursor-pointer hover:bg-gray-200 dark:hover:bg-dark-border px-2 py-1 rounded transition-colors">Privacy</span>
+                    <span className="cursor-pointer hover:bg-gray-200 dark:hover:bg-dark-border px-2 py-1 rounded transition-colors">Terms</span>
                 </div>
             </div>
         </div>

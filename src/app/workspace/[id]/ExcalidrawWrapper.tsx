@@ -10,7 +10,7 @@ import type { LibraryItems, ExcalidrawImperativeAPI } from "@excalidraw/excalidr
 
 import { useAISession, type AddNodePayload, type SessionStatus } from "@/hooks/useAISession";
 import { useAuth } from "@/hooks/useAuth";
-import { getCurrentSession } from "@/lib/aws-client";
+import { getCurrentSession } from "@/lib/supabase-client";
 import { useRouter } from "next/navigation";
 import InviteModal from "@/components/workspace/InviteModal";
 import AIToolsPanel from "@/components/workspace/AIToolsPanel";
